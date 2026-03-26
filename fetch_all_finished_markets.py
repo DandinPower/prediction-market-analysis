@@ -9,14 +9,14 @@ import requests
 GAMMA_BASE_URL = "https://gamma-api.polymarket.com"
 CLOB_BASE_URL = "https://clob.polymarket.com"
 
-START_DATE_MIN = datetime.fromisoformat("2025-12-30T00:00:00+00:00")
-END_DATE_MIN = datetime.fromisoformat("2025-12-30T00:00:00+00:00")
+START_DATE_MIN = datetime.fromisoformat("2025-12-25T00:00:00+00:00")
+END_DATE_MIN = datetime.fromisoformat("2025-12-25T00:00:00+00:00")
 END_DATE_MAX = datetime.fromisoformat("2025-12-31T23:59:59+00:00")
 
 LIMIMT = 500
 TIMEOUT = 30
 
-ALL_MARKETS_METADATA_DUMP_PATH = Path("markets/all_markets_metadata.json")
+ALL_MARKETS_METADATA_DUMP_PATH = Path("all_markets_metadata.json")
 ALL_MARKETS_METADATA_DUMP_PATH.parent.mkdir(parents=True, exist_ok=True)
   
 def fetch_all_finished_markets(start_date_min: datetime, end_date_min: datetime, end_date_max: datetime, limit: int = 500, timeout: int = 30) -> list[dict[str, Any]]:
@@ -71,8 +71,34 @@ def fetch_all_finished_markets(start_date_min: datetime, end_date_min: datetime,
     return markets
 
 
+def post_process_markets(markets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Post process the fetched markets.
+    1. Get the outcome based on outcomePrices: if outcomePrices is [0, 1], then outcome is "no"; if outcomePrices is [1, 0], then outcome is "yes". If outcomePrices is neither of them, raise an error.
+    2. (Optional) Add more post processing steps if needed in the future.
+    """
+    # Get the outcome based on outcomePrices
+    post_processed_markets = []
+    for market in markets:
+        is_valid_market = True
+        outcome_prices = json.loads(market["outcomePrices"])
+        if outcome_prices[0] == '0':
+            market["outcome"] = "no"
+        elif outcome_prices[0] == '1':
+            market["outcome"] = "yes"
+        else:
+            print(f"Unexpected outcomePrices: {outcome_prices} for market id: {market['id']}, Skipping this market.")
+            is_valid_market = False
+        
+        if is_valid_market:
+            post_processed_markets.append(market)
+    
+    print(f"Post processed markets: {len(post_processed_markets)} / {len(markets)}")
+    return post_processed_markets
+
 def main() -> None:
     markets = fetch_all_finished_markets(start_date_min=START_DATE_MIN, end_date_min=END_DATE_MIN, end_date_max=END_DATE_MAX, limit=LIMIMT, timeout=TIMEOUT)
+    markets = post_process_markets(markets)
 
     with open(ALL_MARKETS_METADATA_DUMP_PATH, "w", encoding="utf-8") as f:
         json.dump(markets, f, indent=4, ensure_ascii=False)

@@ -4,8 +4,8 @@ import csv
 from pathlib import Path    
 from typing import Any
 
-ALL_MARKETS_METADATA_DUMP_PATH = Path("markets/all_markets_metadata.json")
-MARKET_TRADE_COUNT_THRESHOLD = 500
+ALL_MARKETS_METADATA_DUMP_PATH = Path("all_markets_metadata.json")
+MARKET_TRADE_COUNT_THRESHOLD = 1
 TRADES_FOLDER = "trades"
 RESULT_FOLDER = "mapped_markets"
 
@@ -27,6 +27,8 @@ def load_markets_metadata() -> tuple[dict[str, Any], list[Any]]:
     token_to_market = {}
     for market in markets:
         market["trade_count"] = 0
+        market["yes_trade_count"] = 0
+        market["no_trade_count"] = 0
         market["yes_trades"] = []
         market["no_trades"] = []
         clob_token_ids = json.loads(market["clobTokenIds"])
@@ -71,14 +73,16 @@ def map_markets_and_trades(token_to_market: dict[str, Any], markets: list[Any], 
                     no_token_id = clob_token_ids[1]
                     if yes_token_id == token_id:
                         market["yes_trades"].append(trade_info)
+                        market["yes_trade_count"] += 1
                     elif no_token_id == token_id:
                         market["no_trades"].append(trade_info)
+                        market["no_trade_count"] += 1
                     else:
                         print(f"Should not happen: token_id {token_id} not found in market's clobTokenIds")
                     market["trade_count"] += 1
     
     filtered_mapped_markets = [market for market in markets if market["trade_count"] > MARKET_TRADE_COUNT_THRESHOLD]
-    print(f"Found {len(filtered_mapped_markets)} / {len(markets)} markets with at least one trade.")
+    print(f"Found {len(filtered_mapped_markets)} / {len(markets)} markets with at least {MARKET_TRADE_COUNT_THRESHOLD} trade.")
     
     # sort trades in each market by timestamp
     for market in filtered_mapped_markets:

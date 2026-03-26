@@ -8,4 +8,5 @@ dependencies = [
     "firecrawl-py>=4.19.0",
     "matplotlib>=3.10.8",
     "pandas>=3.0.1",
+    "torch>=2.11.0",
 ]
