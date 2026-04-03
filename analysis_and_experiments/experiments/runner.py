@@ -80,9 +80,10 @@ def _build_rankings(runs: list[RunResult]) -> tuple[list[dict[str, object]], lis
 def _print_run_result(run: RunResult) -> None:
     train_auc_text = f"{run.train_metrics.auc:.4f}" if run.train_metrics.auc is not None else "N/A"
     val_auc_text = f"{run.val_metrics.auc:.4f}" if run.val_metrics.auc is not None else "N/A"
+    mode_text = f"cv={run.cv_folds}-fold" if run.cv_enabled else "single-split"
     print(
         f"[{run.preset}] strategy={run.strategy}, ratio={run.truncate_and_keep_ratio:.2f}, "
-        f"candles={run.desired_num_candlesticks}"
+        f"candles={run.desired_num_candlesticks}, mode={mode_text}"
     )
     print(
         "Train | "
@@ -117,6 +118,8 @@ def _print_run_result(run: RunResult) -> None:
         print(f"Train confusion matrix saved: {run.train_confusion_matrix_plot_path}")
     if run.val_confusion_matrix_plot_path is not None:
         print(f"Val confusion matrix saved: {run.val_confusion_matrix_plot_path}")
+    if run.fold_results:
+        print(f"Recorded {len(run.fold_results)} fold metric rows.")
 
 
 def run_preset(
@@ -126,6 +129,8 @@ def run_preset(
     output_root: Path,
     ratios_override: list[float] | None = None,
     gru_candles_override: list[int] | None = None,
+    cv_folds: int = 5,
+    disable_cv: bool = False,
 ) -> ExperimentSummary:
     tasks = build_preset_tasks(
         preset,
@@ -150,6 +155,8 @@ def run_preset(
                 preset=task.preset,
                 desired_num_candlesticks=task.desired_num_candlesticks or 40,
                 market_policy=market_policy,
+                use_cross_validation=not disable_cv,
+                cv_folds=cv_folds,
                 roc_output_dir=output_root / "plots" / "roc" / "gru",
                 train_val_curves_output_dir=output_root / "plots" / "training_curves" / "gru",
                 confusion_matrix_output_dir=output_root / "plots" / "confusion_matrix" / "gru",
@@ -160,6 +167,8 @@ def run_preset(
                 task.truncate_and_keep_ratio,
                 preset=task.preset,
                 market_policy=market_policy,
+                use_cross_validation=not disable_cv,
+                cv_folds=cv_folds,
                 roc_output_dir=output_root / "plots" / "roc" / "tabular",
                 confusion_matrix_output_dir=output_root / "plots" / "confusion_matrix" / "tabular",
             )
@@ -177,8 +186,9 @@ def run_preset(
         ranking_by_auc=ranking_by_auc,
     )
 
-    csv_path, json_path = write_summary_outputs(summary, output_root=output_root)
+    csv_path, folds_csv_path, json_path = write_summary_outputs(summary, output_root=output_root)
     print(f"\nSaved summary CSV: {csv_path}")
+    print(f"Saved fold summary CSV: {folds_csv_path}")
     print(f"Saved summary JSON: {json_path}")
 
     return summary
@@ -218,6 +228,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("outputs"),
         help="Experiment output root (default: outputs).",
     )
+    parser.add_argument(
+        "--cv-folds",
+        type=int,
+        default=5,
+        help="Number of stratified CV folds when CV is enabled (default: 5).",
+    )
+    parser.add_argument(
+        "--disable-cv",
+        action="store_true",
+        help="Disable cross-validation and use legacy single train/val split.",
+    )
     return parser
 
 
@@ -235,6 +256,8 @@ def main() -> None:
                 output_root=args.output_root,
                 ratios_override=ratios_override,
                 gru_candles_override=gru_candles_override,
+                cv_folds=args.cv_folds,
+                disable_cv=args.disable_cv,
             )
     else:
         run_preset(
@@ -243,6 +266,8 @@ def main() -> None:
             output_root=args.output_root,
             ratios_override=ratios_override,
             gru_candles_override=gru_candles_override,
+            cv_folds=args.cv_folds,
+            disable_cv=args.disable_cv,
         )
 
 

@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 import torch
 import torch.nn as nn
+from sklearn.model_selection import StratifiedKFold
 
 from analysis_and_experiments.data import load_filtered_markets_with_trades
 from analysis_and_experiments.evaluation import (
@@ -16,7 +17,11 @@ from analysis_and_experiments.plotting import (
     save_train_val_metric_plot,
     save_roc_plot,
 )
-from analysis_and_experiments.strategies.common import RunResult
+from analysis_and_experiments.strategies.common import (
+    FoldResult,
+    RunResult,
+    average_binary_metrics,
+)
 
 CLASSIFICATION_THRESHOLD = 0.5
 
@@ -78,13 +83,10 @@ def get_expected_candlestick_interval(num_trades: int, desired_num_candlesticks:
     return max(1, num_trades // desired_num_candlesticks)
 
 
-def prepare_data_for_gru_training(
+def build_gru_dataset(
     loaded_markets: list[dict[str, Any]],
     market_id_to_candlestick_data: dict[str, list[CandleStick]],
-    *,
-    val_ratio: float,
-    seed: int,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     X: list[list[list[float]]] = []
     y: list[int] = []
     for market in loaded_markets:
@@ -119,6 +121,33 @@ def prepare_data_for_gru_training(
             X_tensor[sample_index, :, 4] = (total_volume - min_volume) / (max_volume - min_volume)
 
     y_tensor = torch.tensor(y, dtype=torch.long).unsqueeze(1)
+    return X_tensor, y_tensor
+
+
+def _split_by_indices(
+    X: torch.Tensor,
+    y: torch.Tensor,
+    train_indices: torch.Tensor,
+    val_indices: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    X_train = X[train_indices]
+    y_train = y[train_indices]
+    X_val = X[val_indices]
+    y_val = y[val_indices]
+    return X_train, y_train, X_val, y_val
+
+
+def prepare_data_for_gru_training(
+    loaded_markets: list[dict[str, Any]],
+    market_id_to_candlestick_data: dict[str, list[CandleStick]],
+    *,
+    val_ratio: float,
+    seed: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    X_tensor, y_tensor = build_gru_dataset(
+        loaded_markets,
+        market_id_to_candlestick_data,
+    )
 
     generator = torch.Generator().manual_seed(seed)
     shuffled_indices = torch.randperm(X_tensor.shape[0], generator=generator)
@@ -240,6 +269,56 @@ def _predict_probabilities(gru_model: nn.Module, linear_layer: nn.Module, X: tor
         return [float(value) for value in probabilities]
 
 
+def _validate_cv_folds(y: torch.Tensor, cv_folds: int) -> None:
+    if cv_folds < 2:
+        raise ValueError(f"cv_folds must be >= 2 when CV is enabled, got {cv_folds}.")
+
+    labels = y.detach().cpu().squeeze(1)
+    class_counts = torch.bincount(labels, minlength=2)
+    min_class_count = int(torch.min(class_counts).item())
+    if min_class_count < cv_folds:
+        raise ValueError(
+            "Invalid cv_folds: smallest class count is "
+            f"{min_class_count}, but cv_folds={cv_folds}. "
+            "Reduce --cv-folds or disable CV."
+        )
+
+
+def _average_histories(histories: list[GRUTrainingHistory]) -> GRUTrainingHistory:
+    if not histories:
+        raise ValueError("histories cannot be empty.")
+
+    num_epochs = len(histories[0].train_loss)
+    for history in histories:
+        if len(history.train_loss) != num_epochs:
+            raise ValueError("All history objects must share the same train_loss length.")
+        if len(history.train_accuracy) != num_epochs:
+            raise ValueError("All history objects must share the same train_accuracy length.")
+        if len(history.val_loss) != num_epochs:
+            raise ValueError("All history objects must share the same val_loss length.")
+        if len(history.val_accuracy) != num_epochs:
+            raise ValueError("All history objects must share the same val_accuracy length.")
+
+    return GRUTrainingHistory(
+        train_loss=[
+            float(sum(history.train_loss[epoch] for history in histories) / len(histories))
+            for epoch in range(num_epochs)
+        ],
+        train_accuracy=[
+            float(sum(history.train_accuracy[epoch] for history in histories) / len(histories))
+            for epoch in range(num_epochs)
+        ],
+        val_loss=[
+            float(sum(history.val_loss[epoch] for history in histories) / len(histories))
+            for epoch in range(num_epochs)
+        ],
+        val_accuracy=[
+            float(sum(history.val_accuracy[epoch] for history in histories) / len(histories))
+            for epoch in range(num_epochs)
+        ],
+    )
+
+
 def run_gru_experiment_on_ratio(
     mapped_market_folder_path: Path,
     truncate_and_keep_ratio: float,
@@ -249,6 +328,8 @@ def run_gru_experiment_on_ratio(
     market_policy: Callable[[dict[str, Any]], bool] | None = None,
     val_ratio: float = 0.2,
     seed: int = 42,
+    use_cross_validation: bool = True,
+    cv_folds: int = 5,
     roc_output_dir: Path,
     train_val_curves_output_dir: Path | None = None,
     confusion_matrix_output_dir: Path | None = None,
@@ -283,51 +364,182 @@ def run_gru_experiment_on_ratio(
             interval_trade,
         )
 
-    X_train, y_train, X_val, y_val = prepare_data_for_gru_training(
+    X, y = build_gru_dataset(
         loaded_markets,
         loaded_market_id_to_candlestick_data,
-        val_ratio=val_ratio,
-        seed=seed,
     )
 
-    print(
-        f"Prepared GRU data for ratio={truncate_and_keep_ratio:.2f}, candles={desired_num_candlesticks}. "
-        f"X_train={tuple(X_train.shape)}, X_val={tuple(X_val.shape)}"
-    )
+    fold_results: list[FoldResult] = []
+    y_true_train: list[int]
+    y_prob_train: list[float]
+    y_true_val: list[int]
+    y_prob_val: list[float]
+    average_margin_of_victory: float
+    training_history: GRUTrainingHistory
+    train_metrics: Any
+    val_metrics: Any
 
-    gru_model, linear_layer, training_history = gru_training(
-        X_train,
-        y_train,
-        X_val,
-        y_val,
-        seed=seed,
-    )
+    if use_cross_validation:
+        _validate_cv_folds(y, cv_folds)
+        y_labels = y.detach().cpu().squeeze(1).numpy()
+        splitter = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=seed)
 
-    y_prob_train = _predict_probabilities(gru_model, linear_layer, X_train)
-    y_prob_val = _predict_probabilities(gru_model, linear_layer, X_val)
+        fold_histories: list[GRUTrainingHistory] = []
+        train_metrics_per_fold = []
+        all_train_true: list[int] = []
+        all_train_prob: list[float] = []
+        all_val_true: list[int] = []
+        all_val_prob: list[float] = []
+        all_val_reference_prices: list[float] = []
 
-    train_metrics = evaluate_binary_metrics(
-        y_train,
-        y_prob_train,
-        classification_threshold=CLASSIFICATION_THRESHOLD,
-    )
-    val_metrics = evaluate_binary_metrics(
-        y_val,
-        y_prob_val,
-        classification_threshold=CLASSIFICATION_THRESHOLD,
-    )
+        for fold_index, (train_idx_np, val_idx_np) in enumerate(
+            splitter.split(X.detach().cpu().numpy(), y_labels),
+            start=1,
+        ):
+            train_indices = torch.tensor(train_idx_np, dtype=torch.long)
+            val_indices = torch.tensor(val_idx_np, dtype=torch.long)
+            X_train, y_train_tensor, X_val, y_val_tensor = _split_by_indices(
+                X,
+                y,
+                train_indices,
+                val_indices,
+            )
 
-    reference_prices = [float(value) for value in X_val[:, -1, 5].detach().cpu().tolist()]
-    average_margin_of_victory = calculate_average_margin_of_victory(y_prob_val, reference_prices)
+            print(
+                f"Prepared GRU CV fold {fold_index}/{cv_folds} for ratio={truncate_and_keep_ratio:.2f}, "
+                f"candles={desired_num_candlesticks}. X_train={tuple(X_train.shape)}, X_val={tuple(X_val.shape)}"
+            )
+
+            gru_model, linear_layer, fold_history = gru_training(
+                X_train,
+                y_train_tensor,
+                X_val,
+                y_val_tensor,
+                seed=seed,
+            )
+            fold_histories.append(fold_history)
+
+            fold_prob_train = _predict_probabilities(gru_model, linear_layer, X_train)
+            fold_prob_val = _predict_probabilities(gru_model, linear_layer, X_val)
+
+            fold_train_metrics = evaluate_binary_metrics(
+                y_train_tensor,
+                fold_prob_train,
+                classification_threshold=CLASSIFICATION_THRESHOLD,
+            )
+            fold_val_metrics = evaluate_binary_metrics(
+                y_val_tensor,
+                fold_prob_val,
+                classification_threshold=CLASSIFICATION_THRESHOLD,
+            )
+            train_metrics_per_fold.append(fold_train_metrics)
+
+            fold_reference_prices = [float(value) for value in X_val[:, -1, 5].detach().cpu().tolist()]
+            fold_margin = calculate_average_margin_of_victory(fold_prob_val, fold_reference_prices)
+
+            fold_results.append(
+                FoldResult(
+                    fold_index=fold_index,
+                    train_size=int(y_train_tensor.shape[0]),
+                    val_size=int(y_val_tensor.shape[0]),
+                    train_metrics=fold_train_metrics,
+                    val_metrics=fold_val_metrics,
+                    average_margin_of_victory=fold_margin,
+                )
+            )
+
+            all_train_true.extend(
+                int(value) for value in y_train_tensor.detach().cpu().squeeze(1).tolist()
+            )
+            all_train_prob.extend(fold_prob_train)
+            all_val_true.extend(int(value) for value in y_val_tensor.detach().cpu().squeeze(1).tolist())
+            all_val_prob.extend(fold_prob_val)
+            all_val_reference_prices.extend(fold_reference_prices)
+
+            print(
+                f"GRU CV fold {fold_index}/{cv_folds} completed. "
+                f"train={y_train_tensor.shape[0]}, val={y_val_tensor.shape[0]}"
+            )
+
+        y_true_train = all_train_true
+        y_prob_train = all_train_prob
+        y_true_val = all_val_true
+        y_prob_val = all_val_prob
+        average_margin_of_victory = calculate_average_margin_of_victory(
+            all_val_prob,
+            all_val_reference_prices,
+        )
+
+        training_history = _average_histories(fold_histories)
+        train_metrics = average_binary_metrics(train_metrics_per_fold)
+        val_metrics = evaluate_binary_metrics(
+            torch.tensor(all_val_true, dtype=torch.long).unsqueeze(1),
+            all_val_prob,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+        file_suffix = f"_cv{cv_folds}"
+        cv_enabled = True
+        run_cv_folds: int | None = cv_folds
+    else:
+        X_train, y_train_tensor, X_val, y_val_tensor = prepare_data_for_gru_training(
+            loaded_markets,
+            loaded_market_id_to_candlestick_data,
+            val_ratio=val_ratio,
+            seed=seed,
+        )
+        print(
+            f"Prepared GRU data for ratio={truncate_and_keep_ratio:.2f}, candles={desired_num_candlesticks}. "
+            f"X_train={tuple(X_train.shape)}, X_val={tuple(X_val.shape)}"
+        )
+
+        gru_model, linear_layer, training_history = gru_training(
+            X_train,
+            y_train_tensor,
+            X_val,
+            y_val_tensor,
+            seed=seed,
+        )
+
+        y_prob_train = _predict_probabilities(gru_model, linear_layer, X_train)
+        y_prob_val = _predict_probabilities(gru_model, linear_layer, X_val)
+        y_true_train = [int(value) for value in y_train_tensor.detach().cpu().squeeze(1).tolist()]
+        y_true_val = [int(value) for value in y_val_tensor.detach().cpu().squeeze(1).tolist()]
+
+        train_metrics = evaluate_binary_metrics(
+            y_train_tensor,
+            y_prob_train,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+        val_metrics = evaluate_binary_metrics(
+            y_val_tensor,
+            y_prob_val,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+
+        reference_prices = [float(value) for value in X_val[:, -1, 5].detach().cpu().tolist()]
+        average_margin_of_victory = calculate_average_margin_of_victory(y_prob_val, reference_prices)
+        fold_results = [
+            FoldResult(
+                fold_index=1,
+                train_size=int(y_train_tensor.shape[0]),
+                val_size=int(y_val_tensor.shape[0]),
+                train_metrics=train_metrics,
+                val_metrics=val_metrics,
+                average_margin_of_victory=average_margin_of_victory,
+            )
+        ]
+        file_suffix = ""
+        cv_enabled = False
+        run_cv_folds = None
 
     roc_file_name = (
-        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}.png"
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{file_suffix}.png"
     )
     roc_plot_path = save_roc_plot(
         output_path=roc_output_dir / roc_file_name,
         title=(
             f"GRU ROC (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
-            f"candles={desired_num_candlesticks})"
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
         ),
         roc_fpr=val_metrics.roc_fpr,
         roc_tpr=val_metrics.roc_tpr,
@@ -335,17 +547,18 @@ def run_gru_experiment_on_ratio(
         dpi=300,
     )
 
+    curve_suffix = file_suffix
     loss_curve_file_name = (
-        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}_loss.png"
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{curve_suffix}_loss.png"
     )
     accuracy_curve_file_name = (
-        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}_accuracy.png"
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{curve_suffix}_accuracy.png"
     )
     loss_curve_plot_path = save_train_val_metric_plot(
         output_path=train_val_curves_output_dir / loss_curve_file_name,
         title=(
             f"GRU Train/Val Loss (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
-            f"candles={desired_num_candlesticks})"
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
         ),
         metric_name="Loss",
         train_values=training_history.train_loss,
@@ -356,7 +569,7 @@ def run_gru_experiment_on_ratio(
         output_path=train_val_curves_output_dir / accuracy_curve_file_name,
         title=(
             f"GRU Train/Val Accuracy (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
-            f"candles={desired_num_candlesticks})"
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
         ),
         metric_name="Accuracy",
         train_values=training_history.train_accuracy,
@@ -365,22 +578,20 @@ def run_gru_experiment_on_ratio(
         dpi=300,
     )
 
-    y_true_train = [int(value) for value in y_train.detach().cpu().squeeze(1).tolist()]
-    y_true_val = [int(value) for value in y_val.detach().cpu().squeeze(1).tolist()]
     y_pred_train = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_train]
     y_pred_val = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_val]
 
     train_confusion_matrix_file_name = (
-        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}_train.png"
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{file_suffix}_train.png"
     )
     val_confusion_matrix_file_name = (
-        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}_val.png"
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{file_suffix}_val.png"
     )
     train_confusion_matrix_plot_path = save_confusion_matrix_plot(
         output_path=confusion_matrix_output_dir / train_confusion_matrix_file_name,
         title=(
             f"GRU Train Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
-            f"candles={desired_num_candlesticks})"
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
         ),
         y_true=y_true_train,
         y_pred=y_pred_train,
@@ -390,7 +601,7 @@ def run_gru_experiment_on_ratio(
         output_path=confusion_matrix_output_dir / val_confusion_matrix_file_name,
         title=(
             f"GRU Val Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
-            f"candles={desired_num_candlesticks})"
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
         ),
         y_true=y_true_val,
         y_pred=y_pred_val,
@@ -402,9 +613,12 @@ def run_gru_experiment_on_ratio(
         strategy="gru",
         truncate_and_keep_ratio=truncate_and_keep_ratio,
         desired_num_candlesticks=desired_num_candlesticks,
+        cv_enabled=cv_enabled,
+        cv_folds=run_cv_folds,
         train_metrics=train_metrics,
         val_metrics=val_metrics,
         average_margin_of_victory=average_margin_of_victory,
+        fold_results=fold_results,
         roc_plot_path=roc_plot_path,
         gru_train_curve_plot_path=loss_curve_plot_path,
         gru_val_curve_plot_path=accuracy_curve_plot_path,
