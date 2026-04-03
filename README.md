@@ -44,8 +44,7 @@ prediction-market-analysis/
 │   └── results/
 ├── reports/                       # Final write-up and report source files
 │   ├── 414551003_report.pdf       # Exported final report
-│   ├── markdown_version/          # Markdown report and figures
-│   └── latex_version/             # LaTeX source, assets, and build outputs
+│   └── latex/             # LaTeX source, assets, and build outputs
 ├── pyproject.toml
 └── uv.lock
 ```
@@ -55,8 +54,7 @@ prediction-market-analysis/
 Project report assets live under `reports/`:
 
 - `reports/414551003_report.pdf`: final exported PDF
-- `reports/markdown_version/`: markdown version of the report and embedded figures
-- `reports/latex_version/`: LaTeX source, bibliography, images, and compiled build artifacts
+- `reports/latex/`: LaTeX source, bibliography, images, and compiled build artifacts
 
 ## How To Run
 

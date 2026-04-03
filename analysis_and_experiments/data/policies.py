@@ -11,7 +11,7 @@ def btc_market_filter_policy(market: dict[str, Any]) -> bool:
     if not market_filter_policy(market):
         return False
     description = str(market.get("description", ""))
-    return "btc/usdt" in description.lower()
+    return "btc" in description.lower() or "bitcoin" in description.lower()
 
 
 def trade_filter_policy(trade: dict[str, Any]) -> bool:

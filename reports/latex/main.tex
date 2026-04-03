@@ -429,9 +429,9 @@ The average margin behaves somewhat differently and becomes less negative at ver
 Dataset Scope & Markets & Yes & No & Model & Accuracy & F1 & AUC & Average Margin \\
 \midrule
 All markets & 1235 & 650 & 585 & GRU & 0.764 & 0.776 & 0.807 & -0.0521 \\
-Bitcoin only & 117 & 61 & 56 & GRU & 0.829 & 0.836 & 0.810 & -0.0316 \\
+Bitcoin only & 689 & 346 & 343 & GRU & 0.784 & 0.789 & 0.816 & -0.0655 \\
 All markets & 1235 & 650 & 585 & XGBoost & 0.777 & 0.791 & 0.853 & -0.0539 \\
-Bitcoin only & 117 & 61 & 56 & XGBoost & 0.735 & 0.744 & 0.773 & -0.0765 \\
+Bitcoin only & 689 & 346 & 343 & XGBoost & 0.781 & 0.788 & 0.864 & -0.0626 \\
 \bottomrule
 \end{tabular}
 \end{adjustbox}
@@ -444,9 +444,9 @@ Bitcoin only & 117 & 61 & 56 & XGBoost & 0.735 & 0.744 & 0.773 & -0.0765 \\
   \label{fig:bitcoin_comparison}
 \end{figure}
 
-The Bitcoin-only subset contains 117 markets, with 61 yes outcomes and 56 no outcomes, so it is much smaller than the full dataset. Even so, Table~\ref{tab:bitcoin_only} shows that the sequential model benefits noticeably from the more homogeneous market family at the standard 67\% setting. Its accuracy improves from 0.764 to 0.829, its F1 score improves from 0.776 to 0.836, and its average margin improves from -0.0521 to -0.0316 dollars per trade. Figure~\ref{fig:bitcoin_comparison} shows that this pattern largely continues across the later settings as well. At 95\% visible history, the GRU reaches 0.957 accuracy and the least negative margin observed in the Bitcoin-only experiment, -0.0252 dollars per trade. This suggests that the sequential model can exploit the fact that Bitcoin contracts share a more consistent trading rhythm than the full mixture of market types.
+The Bitcoin-only subset contains 689 markets, with 346 yes outcomes and 343 no outcomes, so it remains smaller than the full dataset but is no longer an extremely small corner case. Table~\ref{tab:bitcoin_only} shows that, at the standard 67\% setting, this more homogeneous market family makes the classification task slightly easier for both models. The GRU accuracy rises from 0.764 to 0.784, its F1 score rises from 0.776 to 0.789, and its AUC rises from 0.807 to 0.816. XGBoost also improves slightly in accuracy, from 0.777 to 0.781, and in AUC, from 0.853 to 0.864, while its F1 score is essentially unchanged at 0.788.
 
-The feature-based model does not show the same improvement. On the Bitcoin-only subset, its accuracy and AUC are actually worse than the full market results at 33\%, 50\%, and 67\% visible history, and its average margin is more negative at every ratio. It only overtakes the full market accuracy at very late entry points such as 80\% and 95\%, when the classification task is already close to trivial. This pattern is consistent with stronger overfitting on the smaller subset. Therefore, the Bitcoin-only experiment does not support the simple claim that a narrower domain always helps. It helps the sequential model, but not the feature-based model, and even the better of the two still fails to produce a positive average margin.
+The more important pattern in Figure~\ref{fig:bitcoin_comparison} is that these classification gains do not translate into a better trading proxy. For both models, the average margin is more negative on the Bitcoin-only subset at every visibility ratio. The GRU reaches 0.959 accuracy and 0.981 AUC at 95\% visible history, but its average margin falls to -0.0730 dollars per trade, which is the worst margin in the Bitcoin-only sweep. XGBoost follows the same pattern: its later-ratio accuracy and AUC remain competitive, yet its average margin stays between -0.0446 and -0.0689 dollars per trade throughout the experiment. Therefore, the Bitcoin-only experiment supports a narrower conclusion. Restricting the dataset to Bitcoin-related markets makes the labels somewhat easier to predict, especially for the sequential model, but it does not improve the practical trading outcome. In this setting, greater domain homogeneity sharpens prediction quality while moving the strategy further away from profitability.
 
 \section{Additional Discussion}
 
