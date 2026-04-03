@@ -35,7 +35,7 @@ def _visualize_yes_trades_histogram(trade_count_statistics: list[int], output_di
     plt.ylabel("Number of Markets")
     plt.title("Distribution of Yes Trade Counts Across Markets")
     plt.tight_layout()
-    plt.savefig(output_dir / "yes_trade_count_distribution.png")
+    plt.savefig(output_dir / "yes_trade_count_distribution.png", dpi=300)
     plt.close()
 
 

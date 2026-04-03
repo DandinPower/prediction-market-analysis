@@ -12,3 +12,6 @@ datasets/mapped_markets/
 
 # Ignore environment variables and secrets for poly-trade-scan tool.
 poly-trade-scan/.env
+
+# Ignore some reference files
+nycu_collaboration_report
