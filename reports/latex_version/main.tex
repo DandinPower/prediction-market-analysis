@@ -1,6 +1,6 @@
 \documentclass[11pt]{article}
 
-\usepackage[letterpaper,margin=0.8in]{geometry}
+\usepackage[letterpaper,margin=0.6in]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage{microtype}
 \usepackage{graphicx}
@@ -19,6 +19,7 @@
 \usepackage{listings}
 \usepackage{newtxtext,newtxmath}
 \usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=minority]{hyperref}
+\usepackage{titlesec}
 
 % ---------- Colors ----------
 \definecolor{majority}{HTML}{0033A0}
@@ -62,9 +63,19 @@
 \renewcommand\Authfont{\normalsize}
 \renewcommand\Affilfont{\small\normalfont}
 \setlength{\affilsep}{2pt}
-\setlength{\parskip}{4pt}
+\setlength{\parskip}{2pt}
 \setlength{\parindent}{0pt}
 \captionsetup{font=small}
+\captionsetup{skip=4pt}
+\setlist{itemsep=2pt,topsep=2pt,parsep=0pt,partopsep=0pt}
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{2pt}
+\titlespacing*{\section}{0pt}{8pt}{4pt}
+\titlespacing*{\subsection}{0pt}{6pt}{3pt}
+\titlespacing*{\subsubsection}{0pt}{4pt}{2pt}
 
 % ---------- Abstract styling ----------
 \renewenvironment{abstract}{
@@ -83,6 +94,26 @@
   keepspaces=true
 }
 
+\lstdefinestyle{appendixcode}{
+  language=Python,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  breakatwhitespace=false,
+  breakindent=0pt,
+  columns=fullflexible,
+  frame=single,
+  backgroundcolor=\color{listingbg},
+  showstringspaces=false,
+  keepspaces=true,
+  numbers=left,
+  numberstyle=\tiny\color{minority},
+  numbersep=8pt,
+  xleftmargin=2em,
+  framexleftmargin=1.5em,
+  tabsize=4,
+  postbreak=\mbox{\textcolor{minority}{$\hookrightarrow$}\space}
+}
+
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 
 % ---------- Title, authors, affiliations ----------
@@ -98,10 +129,6 @@
 \thispagestyle{firststyle}
 \vspace*{-20pt}
 \maketitle
-
-\begin{abstract}
-This report studies whether early trading behavior in prediction markets can be used to forecast final event outcomes. The dataset is constructed from Polymarket Gamma metadata and raw Polygon blockchain trades, then filtered into a market-level supervised learning corpus covering 1,235 resolved markets. Two supervised learning approaches are evaluated: a GRU that reads each market as a truncated candlestick-like sequence and an XGBoost classifier that uses summary features. Across five-fold stratified cross-validation, both models achieve clearly above-chance classification performance, but neither produces a positive average trading margin once market prices are taken into account. The results suggest that prediction market microstructure contains usable predictive information, yet that information is already incorporated strongly enough into prices that turning it into a profitable trading strategy remains difficult.
-\end{abstract}
 
 \section{Research Question and Motivation}
 
@@ -128,7 +155,7 @@ The dataset used in this project is not a generic collection from the Polymarket
 
 The dataset for each market contains a JSON file called \texttt{metadata.json}. This file provides the surrounding context, including the market question being traded, the resolution source, the opening and closing times, the market slug, total volume, and the final resolved outcome. In other words, it tells us what the market was about and how it should ultimately be judged. The paired \texttt{yes.csv} and \texttt{no.csv} files then show how traders actually interacted with that question over time. These trade files retain the block number, timestamp, transaction hash, wallet address, buy or sell direction, token quantity, execution price, and the dollar value of each trade.
 
-The following is an example of a transaction CSV:
+The following is an example of a transaction CSV, metadata JSON file and some overall dataset statistics.
 
 \begin{lstlisting}[caption={Example transaction CSV used in the dataset.},label={lst:csv_example}]
 block_number,timestamp,tx_hash,wallet,side,tokens,price,total_usdc
@@ -137,8 +164,6 @@ block_number,timestamp,tx_hash,wallet,side,tokens,price,total_usdc
 80836619,2025-12-26T23:41:21+00:00,0x673d0ec,0x6258f5,BUY,2.0784,0.51,1.06
 80836818,2025-12-26T23:47:59+00:00,0x1db6fd8,0x6258f5,SELL,2.07,0.5,1.035
 \end{lstlisting}
-
-The following is an example of a metadata JSON file:
 
 \begin{lstlisting}[caption={Example market metadata JSON.},label={lst:json_example}]
 {
@@ -155,52 +180,53 @@ The following is an example of a metadata JSON file:
 }
 \end{lstlisting}
 
-The following are some overall dataset statistics.
-
 \begin{table}[ht!]
-\centering
-\caption{Summary statistics of the dataset after filtering for resolved markets.}
-\label{tab:dataset_summary}
-\begin{tabular}{@{}lr@{}}
-\toprule
-Metric & Value \\
-\midrule
-Original Markets & 6011 \\
-Filtered Markets & 1235 \\
-Yes Count & 650 \\
-No Count & 585 \\
-Yes Ratio & 0.5263 \\
-No Ratio & 0.4737 \\
-\bottomrule
-\end{tabular}
+    \centering
+    \begin{minipage}{0.45\textwidth}
+        \centering
+        \caption{Summary statistics of the dataset.}
+        \label{tab:dataset_summary}
+        \begin{tabular}{@{}lr@{}}
+            \toprule
+            Metric & Value \\
+            \midrule
+            Original Markets & 6011 \\
+            Filtered Markets & 1235 \\
+            Yes Count & 650 \\
+            No Count & 585 \\
+            Yes Ratio & 0.5263 \\
+            No Ratio & 0.4737 \\
+            \bottomrule
+        \end{tabular}
+    \end{minipage}
+    \hfill % Adds horizontal space between the tables
+    \begin{minipage}{0.5\textwidth}
+        \centering
+        \caption{Market type distribution.}
+        \label{tab:market_type_distribution}
+        \begin{tabular}{@{}lrr@{}}
+            \toprule
+            Market Type & Count & Ratio \\
+            \midrule
+            crypto\_bitcoin & 689 & 0.5579 \\
+            crypto\_other & 520 & 0.4211 \\
+            nfl & 2 & 0.0016 \\
+            nba & 5 & 0.0040 \\
+            cfb & 6 & 0.0049 \\
+            others & 13 & 0.0105 \\
+            \textbf{Total} & \textbf{1235} & \textbf{1.0000} \\
+            \bottomrule
+        \end{tabular}
+    \end{minipage}
 \end{table}
 
 Table~\ref{tab:dataset_summary} shows that this dataset is relatively balanced between yes and no outcomes, with a slight skew toward yes, approximately 52.6\%. No missing or unresolved outcomes remain, which is favorable for supervised learning. However, the filtering step reduces the dataset size significantly, with approximately 20.5\% retained, which may impact statistical power.
-
-\begin{table}[ht!]
-\centering
-\caption{Market type distribution in the dataset.}
-\label{tab:market_type_distribution}
-\begin{tabular}{@{}lrr@{}}
-\toprule
-Market Type & Count & Ratio \\
-\midrule
-crypto\_bitcoin & 689 & 0.5579 \\
-crypto\_other & 520 & 0.4211 \\
-nfl & 2 & 0.0016 \\
-nba & 5 & 0.0040 \\
-cfb & 6 & 0.0049 \\
-others & 13 & 0.0105 \\
-\textbf{Total} & \textbf{1235} & \textbf{1.0000} \\
-\bottomrule
-\end{tabular}
-\end{table}
 
 Table~\ref{tab:market_type_distribution} shows that this dataset is heavily dominated by crypto-related markets, approximately 97.9\% combined, particularly Bitcoin. Traditional sports categories such as NFL, NBA, and CFB are almost negligible. This introduces a strong domain bias, meaning models trained on this data will likely generalize poorly outside crypto contexts unless rebalanced or augmented. The main reason the dataset is dominated by crypto-related markets is that during the short time window, a large portion of active markets on Polymarket were filtered out because I limited both the start time and end time to be between 2025-12-25 and 2025-12-31, which is a period with many short-horizon contracts. Many diverse markets, such as politics, may run for more than one month, so they are not included in the dataset. This can be improved in the future by expanding the time window and including more markets.
 
 \begin{figure}[ht!]
   \centering
-  \includegraphics[width=\textwidth]{images/yes_trade_count_distribution.png}
+  \includegraphics[width=0.6\textwidth]{images/yes_trade_count_distribution.png}
   \caption{Distribution of trade counts across markets.}
   \label{fig:yes_trade_count_distribution}
 \end{figure}
@@ -225,32 +251,16 @@ To operationalize this step, the project relies on the open-source \texttt{poly-
 
 \begin{figure}[ht!]
   \centering
-  \includegraphics[width=\textwidth]{images/overview_of_dataset_crafting.png}
+  \includegraphics[width=0.9\textwidth]{images/overview_of_dataset_crafting.png}
   \caption{Overview of the dataset crafting process.}
   \label{fig:dataset_crafting_overview}
 \end{figure}
 
-\begin{table}[ht!]
-\centering
-\caption{Stage-by-stage summary of the dataset crafting and preprocessing pipeline.}
-\label{tab:dataset_pipeline}
-\small
-\begin{tabularx}{\textwidth}{@{}lYY@{}}
-\toprule
-Stage & Main operation & Output used in this project \\
-\midrule
-Market discovery & Query Gamma \texttt{/markets}, paginate over closed markets in the target date range, and derive the binary label from \texttt{outcomePrices} & Market metadata with \texttt{question}, \texttt{startDate}, \texttt{endDate}, \texttt{resolutionSource}, \texttt{clobTokenIds}, and final \texttt{outcome} \\
-Chain scan & Download historical Polygon trades across blocks 80750701 to 81053200 with \texttt{poly-trade-scan} & Raw trade rows with \texttt{token\_id}, wallet, side, price, size, and timestamp \\
-Token-based matching & Parse each market's YES and NO token IDs, build a lookup table, and stream all trade CSV rows into the correct market side & \texttt{datasets/mapped\_markets/\textless{}market\_id\textgreater{}/metadata.json}, \texttt{yes.csv}, and \texttt{no.csv} \\
-Market-level filtering & Keep only mapped markets with at least minimal activity, then retain analysis markets with \texttt{yes\_trade\_count > 500} & 6,010 mapped market folders, of which 1,235 remain in the final analysis set \\
-Trade-level filtering & Keep informative YES side trades with \texttt{BUY}, \texttt{price < 0.98}, and \texttt{total\_usdc > 2.0} & Cleaner sequences for visualization and downstream modeling \\
-\bottomrule
-\end{tabularx}
-\end{table}
+Figure~\ref{fig:dataset_crafting_overview} summarizes the full preprocessing workflow as a join between a semantic source and an execution source. The pipeline begins with market discovery by querying the Gamma \texttt{/markets} endpoint, paginating over closed markets within the target date range, and deriving the binary outcome label from \texttt{outcomePrices}. This step produces market-level metadata including \texttt{question}, \texttt{startDate}, \texttt{endDate}, \texttt{resolutionSource}, \texttt{clobTokenIds}, and the final \texttt{outcome}. In parallel, a chain scan is performed by downloading historical Polygon trades across blocks 80750701 to 81053200 using \texttt{poly-trade-scan}, yielding raw trade rows with \texttt{token\_id}, wallet, side, price, size, and timestamp. The two sources are then aligned through token-based matching, where each market's YES and NO token IDs are parsed to build a lookup table, and all trade CSV rows are streamed into their corresponding market side, producing structured outputs under \path{datasets/mapped_markets/<market_id>/} including \texttt{metadata.json}, \texttt{yes.csv}, and \texttt{no.csv}.
 
-Figure~\ref{fig:dataset_crafting_overview} and Table~\ref{tab:dataset_pipeline} summarize the full preprocessing workflow as a join between a semantic source and an execution source. The semantic source is Gamma, which tells us what each market means and how it resolves. The execution source is Polygon, which records how traders actually bought and sold the YES and NO outcome tokens over time. The core design choice of the pipeline is that neither source is sufficient on its own. Gamma is convenient for discovery and labeling but does not expose the full transaction stream used in this project, while raw Polygon blocks contain detailed executions but no concise market-level interpretation. The dataset is therefore crafted by matching these two views through the token identifiers contained in \texttt{clobTokenIds} and \texttt{token\_id}.
+Subsequently, market-level filtering is applied to retain only mapped markets with sufficient activity, followed by a stricter selection of analysis markets satisfying \texttt{yes\_trade\_count \textgreater{} 500}, resulting in 6,010 mapped markets of which 1,235 are used in the final analysis. Trade-level filtering is then performed to extract informative YES-side trades by enforcing conditions \texttt{BUY}, \texttt{price \textless{} 0.98}, and \texttt{total\_usdc \textgreater{} 2.0}, yielding cleaner temporal sequences suitable for visualization and downstream modeling.
 
-In terms of collection conditions and runtime, all data processing in this project was run on a local machine with an Intel Core i3-12100 CPU and an NVIDIA RTX 2060 GPU. The market metadata fetch from Gamma takes about 2 minutes, obtaining the raw Polygon blockchain data for the 7-day window takes about 1 day on free RPC infrastructure, and the downstream preprocessing and market matching stage takes about 5 minutes.
+The core design principle of this pipeline is that neither data source is sufficient in isolation. Gamma provides structured semantic information and resolution labels but lacks the full transaction stream, while Polygon provides detailed execution-level data without concise market interpretation. The dataset is therefore constructed by explicitly linking these two perspectives through the token identifiers in \texttt{clobTokenIds} and \texttt{token\_id}. In terms of runtime characteristics, the entire process is executed on a local machine equipped with an Intel Core i3-12100 CPU and an NVIDIA RTX 2060 GPU. Fetching market metadata from Gamma takes approximately 2 minutes, downloading Polygon data for a 7-day window requires about 1 day using free RPC infrastructure, and the subsequent preprocessing and matching stages complete in roughly 5 minutes.
 
 \section{Detail Approach for Experiments}
 
@@ -263,23 +273,7 @@ The experiments are designed to answer three closely related questions. The firs
   \label{fig:experiment_design_overview}
 \end{figure}
 
-\begin{table}[ht!]
-\centering
-\caption{Summary of the experimental settings used in this project.}
-\label{tab:experiment_settings}
-\small
-\begin{tabularx}{\textwidth}{@{}l l l l Y Y@{}}
-\toprule
-Experiment & Market scope & Model type & Visible portion of each market & Representation & Main purpose \\
-\midrule
-Exp1 & All filtered markets & GRU & 67\% & 40 candlestick-style snapshots per market & Establish the sequential modeling baseline \\
-Exp2 & All filtered markets & XGBoost & 67\% & One summary profile per market & Establish the tabular modeling baseline \\
-Exp3 & All filtered markets & GRU and XGBoost & 33\%, 50\%, 67\%, 80\%, and 95\% & Same as Exp1 and Exp2 & Measure how performance changes as more of the market becomes visible \\
-Exp4 & All filtered markets & GRU & 67\% & 40, 60, 80, 100, 120, 140, and 160 snapshots & Measure the effect of temporal resolution in the sequential model \\
-Exp5 & Bitcoin-only markets & GRU and XGBoost & 33\%, 50\%, 67\%, 80\%, and 95\% & Same as Exp3 & Test whether a more homogeneous market family is easier to model \\
-\bottomrule
-\end{tabularx}
-\end{table}
+The project includes five experiments with distinct purposes. Exp1 establishes the sequential baseline by applying a GRU to all filtered markets using 67\% visible market history and 40 candlestick-style snapshots per market. Exp2 establishes the tabular baseline by applying XGBoost to the same market set and visibility level, using one summary profile per market. Exp3 examines how predictive performance changes as more of each market becomes visible by comparing GRU and XGBoost across visibility levels from 33\% to 95\%. Exp4 tests how temporal resolution affects the sequential model by varying the number of snapshots from 40 to 160 while keeping the GRU setup on all filtered markets. Exp5 tests whether a more homogeneous market family is easier to model by restricting the analysis to Bitcoin-only markets and again comparing GRU and XGBoost across visibility levels from 33\% to 95\%.
 
 All experiments reported in this section were run on the same Intel Core i3-12100 plus RTX 2060 machine, and the full experiment suite takes about 30 minutes to finish.
 
@@ -351,7 +345,7 @@ XGBoost & 0.995 & 0.777 & 0.782 & 0.800 & 0.791 & 0.853 & 0.492 & -0.0539 \\
 
 \begin{figure}[ht!]
   \centering
-  \includegraphics[width=\textwidth]{images/baseline_roc_comparison.png}
+  \includegraphics[width=0.5\textwidth]{images/baseline_roc_comparison.png}
   \caption{ROC comparison between the GRU and XGBoost baselines at 67\% visible history.}
   \label{fig:baseline_roc_comparison}
 \end{figure}
@@ -464,5 +458,28 @@ The main open question is whether prediction market dynamics can actually be tur
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
+
+\clearpage
+\appendix
+\section{Appendix}
+
+This appendix presents the bundled source code used for the preprocessing pipeline and the analysis and experiments modules. The listings below are imported directly from \texttt{source\_code.txt} with automatic line wrapping and line numbers to avoid overflow beyond the page margins.
+
+\subsection{\texttt{analysis\_and\_experiments} Package}
+\lstinputlisting[
+  style=appendixcode,
+  firstline=42,
+  lastline=2847,
+  caption={Source code for the \texttt{analysis\_and\_experiments} package.},
+  label={lst:analysis_and_experiments_source}
+]{source_code.txt}
+
+\subsection{\texttt{preprocessing} Package}
+\lstinputlisting[
+  style=appendixcode,
+  firstline=2849,
+  caption={Source code for the \texttt{preprocessing} package.},
+  label={lst:preprocessing_source}
+]{source_code.txt}
 
 \end{document}

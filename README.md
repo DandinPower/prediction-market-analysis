@@ -22,20 +22,41 @@ Run flow (in order):
 prediction-market-analysis/
 ├── preprocessing/                 # Data pipeline (fetch, match, visualize)
 │   ├── cli.py
+│   ├── fetch.py
+│   ├── match.py
 │   ├── README.md
+│   ├── visualize.py
 │   └── poly-trade-scan/          # Polygon scanner subproject
 ├── analysis_and_experiments/      # Model training, evaluation, and analysis scripts
-│   ├── experiments/
 │   ├── analysis/
+│   ├── data/
+│   ├── evaluation/
+│   ├── experiments/
+│   ├── plotting/
+│   ├── strategies/
 │   └── README.md
 ├── datasets/
 │   ├── metadata/                  # Raw/processed market metadata
 │   ├── trades/                    # Raw trade files / split archives
 │   └── mapped_markets/            # Generated per-market training inputs
-├── outputs/                       # Experiment outputs (plots, summaries)
+├── outputs/                       # Generated experiment artifacts
+│   ├── plots/
+│   └── results/
+├── reports/                       # Final write-up and report source files
+│   ├── 414551003_report.pdf       # Exported final report
+│   ├── markdown_version/          # Markdown report and figures
+│   └── latex_version/             # LaTeX source, assets, and build outputs
 ├── pyproject.toml
 └── uv.lock
 ```
+
+## Reports
+
+Project report assets live under `reports/`:
+
+- `reports/414551003_report.pdf`: final exported PDF
+- `reports/markdown_version/`: markdown version of the report and embedded figures
+- `reports/latex_version/`: LaTeX source, bibliography, images, and compiled build artifacts
 
 ## How To Run
 

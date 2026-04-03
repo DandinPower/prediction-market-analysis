@@ -1,0 +1,93 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{tsang2026polymarket}
+\citation{kalshiPlatform}
+\citation{urquhart2025decentralized}
+\citation{reichenbach2025exploring}
+\citation{blockworksPolymarketVolume}
+\citation{blockworksPolymarketVolume}
+\providecommand \oddpage@label [2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Research Question and Motivation}{1}{section.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Polymarket trading volume from 2024 to 2026. Source: Blockworks Analysis~\cite  {blockworksPolymarketVolume}.}}{1}{figure.caption.1}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:polymarket_trading_volume}{{1}{1}{Polymarket trading volume from 2024 to 2026. Source: Blockworks Analysis~\cite {blockworksPolymarketVolume}}{figure.caption.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Dataset Introduction}{1}{section.2}\protected@file@percent }
+\newlabel{lst:csv_example}{{1}{2}{Example transaction CSV used in the dataset}{lstlisting.1}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {1}{\ignorespaces Example transaction CSV used in the dataset.}}{2}{lstlisting.1}\protected@file@percent }
+\newlabel{lst:json_example}{{2}{2}{Example market metadata JSON}{lstlisting.2}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {2}{\ignorespaces Example market metadata JSON.}}{2}{lstlisting.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Summary statistics of the dataset.}}{2}{table.caption.2}\protected@file@percent }
+\newlabel{tab:dataset_summary}{{1}{2}{Summary statistics of the dataset}{table.caption.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Market type distribution.}}{2}{table.caption.2}\protected@file@percent }
+\newlabel{tab:market_type_distribution}{{2}{2}{Market type distribution}{table.caption.2}{}}
+\citation{polymarketApiIntroduction}
+\citation{polymarketApiIntroduction}
+\citation{polymarketListMarkets}
+\citation{polygonRpcEndpoints}
+\citation{polygonRpcEndpoints}
+\citation{ethereumJsonRpc}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Distribution of trade counts across markets.}}{3}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:yes_trade_count_distribution}{{2}{3}{Distribution of trade counts across markets}{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Detail Approach for Dataset Crafting and Preprocessing}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Polymarket Gamma API}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Polygon Blockchain Data and Poly-trade-scan Toolkit}{3}{subsection.3.2}\protected@file@percent }
+\citation{polyTradeScan}
+\citation{polyTradeScan}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Complete Dataset Crafting Process}{4}{subsection.3.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Overview of the dataset crafting process.}}{4}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:dataset_crafting_overview}{{3}{4}{Overview of the dataset crafting process}{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Detail Approach for Experiments}{5}{section.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Overview of the experimental pipeline from filtered YES side trades to model prediction and evaluation.}}{5}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:experiment_design_overview}{{4}{5}{Overview of the experimental pipeline from filtered YES side trades to model prediction and evaluation}{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Sequential Modeling with GRU}{5}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Feature-Based Modeling with XGBoost}{5}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Evaluation Protocol and Economic Interpretation}{6}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Experiments and Discussion}{6}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Exp1: GRU model results and discussion}{6}{subsection.5.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Training and validation learning curves of the GRU baseline at 67\% visible history.}}{6}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:gru_learning_curves}{{5}{6}{Training and validation learning curves of the GRU baseline at 67\% visible history}{figure.caption.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Example confusion matrix for the baseline GRU model.}}{6}{table.caption.7}\protected@file@percent }
+\newlabel{tab:gru_confusion}{{3}{6}{Example confusion matrix for the baseline GRU model}{table.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Exp2: XGBoost model results and discussion}{7}{subsection.5.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Baseline comparison between the sequential and feature-based models at 67\% visible history.}}{7}{table.caption.8}\protected@file@percent }
+\newlabel{tab:baseline_comparison}{{4}{7}{Baseline comparison between the sequential and feature-based models at 67\% visible history}{table.caption.8}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces ROC comparison between the GRU and XGBoost baselines at 67\% visible history.}}{7}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:baseline_roc_comparison}{{6}{7}{ROC comparison between the GRU and XGBoost baselines at 67\% visible history}{figure.caption.9}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Example confusion matrix for the baseline XGBoost model.}}{7}{table.caption.10}\protected@file@percent }
+\newlabel{tab:xgboost_confusion}{{5}{7}{Example confusion matrix for the baseline XGBoost model}{table.caption.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Exp3: Discussion on different truncation timings}{7}{subsection.5.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Validation accuracy, AUC, and average margin as the visible portion of each market increases.}}{8}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:ratio_sweep}{{7}{8}{Validation accuracy, AUC, and average margin as the visible portion of each market increases}{figure.caption.11}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Validation results for the truncation timing sweep.}}{8}{table.caption.12}\protected@file@percent }
+\newlabel{tab:ratio_sweep}{{6}{8}{Validation results for the truncation timing sweep}{table.caption.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Exp4: Discussion on different candlestick construction intervals}{8}{subsection.5.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Validation accuracy, AUC, and average margin for different numbers of snapshots in the GRU model.}}{8}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:candlestick_sweep}{{8}{8}{Validation accuracy, AUC, and average margin for different numbers of snapshots in the GRU model}{figure.caption.13}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Exp5: Discussion on the Bitcoin-only scenario}{9}{subsection.5.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Comparison between the full market set and the Bitcoin-only subset at the common 67\% setting.}}{9}{table.caption.14}\protected@file@percent }
+\newlabel{tab:bitcoin_only}{{7}{9}{Comparison between the full market set and the Bitcoin-only subset at the common 67\% setting}{table.caption.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Full ratio sweep comparison between the all-market setting and the Bitcoin-only setting.}}{9}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:bitcoin_comparison}{{9}{9}{Full ratio sweep comparison between the all-market setting and the Bitcoin-only setting}{figure.caption.15}{}}
+\bibstyle{IEEEtran}
+\bibdata{references}
+\bibcite{tsang2026polymarket}{1}
+\bibcite{kalshiPlatform}{2}
+\bibcite{urquhart2025decentralized}{3}
+\bibcite{reichenbach2025exploring}{4}
+\bibcite{blockworksPolymarketVolume}{5}
+\bibcite{polymarketApiIntroduction}{6}
+\bibcite{polymarketListMarkets}{7}
+\bibcite{polygonRpcEndpoints}{8}
+\bibcite{ethereumJsonRpc}{9}
+\bibcite{polyTradeScan}{10}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Additional Discussion}{10}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Appendix}{11}{appendix.A}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.1}\texttt  {analysis\_and\_experiments} Package}{11}{subsection.A.1}\protected@file@percent }
+\newlabel{lst:analysis_and_experiments_source}{{3}{11}{Source code for the \texttt {analysis\_and\_experiments} package}{lstlisting.3}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3}{\ignorespaces Source code for the \texttt  {analysis\_and\_experiments} package.}}{11}{lstlisting.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {A.2}\texttt  {preprocessing} Package}{49}{subsection.A.2}\protected@file@percent }
+\newlabel{lst:preprocessing_source}{{4}{49}{Source code for the \texttt {preprocessing} package}{lstlisting.4}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {4}{\ignorespaces Source code for the \texttt  {preprocessing} package.}}{49}{lstlisting.4}\protected@file@percent }
+\gdef \@abspage@last{59}

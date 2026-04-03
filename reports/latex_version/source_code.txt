@@ -1,0 +1,3607 @@
+Directory structure:
+└── prediction-market-analysis/
+    ├── analysis_and_experiments/
+    │   ├── __init__.py
+    │   ├── analysis/
+    │   │   ├── __init__.py
+    │   │   ├── market_outcome.py
+    │   │   └── market_type.py
+    │   ├── data/
+    │   │   ├── __init__.py
+    │   │   ├── loader.py
+    │   │   └── policies.py
+    │   ├── evaluation/
+    │   │   ├── __init__.py
+    │   │   ├── margin.py
+    │   │   └── metrics.py
+    │   ├── experiments/
+    │   │   ├── __init__.py
+    │   │   ├── io.py
+    │   │   ├── presets.py
+    │   │   └── runner.py
+    │   ├── plotting/
+    │   │   ├── __init__.py
+    │   │   ├── confusion_matrix.py
+    │   │   ├── roc.py
+    │   │   └── training_curves.py
+    │   └── strategies/
+    │       ├── __init__.py
+    │       ├── common.py
+    │       ├── gru.py
+    │       └── tabular.py
+    └── preprocessing/
+        ├── __init__.py
+        ├── cli.py
+        ├── config.py
+        ├── fetch.py
+        ├── io.py
+        ├── match.py
+        └── visualize.py
+
+================================================
+FILE: analysis_and_experiments/__init__.py
+================================================
+"""Prediction market analysis package."""
+
+__all__ = [
+    "analysis",
+    "data",
+    "evaluation",
+    "experiments",
+    "plotting",
+    "strategies",
+]
+
+
+
+================================================
+FILE: analysis_and_experiments/analysis/__init__.py
+================================================
+"""Dataset analysis modules."""
+
+from .market_outcome import analyze_market_outcome_on_ratio
+from .market_type import analyze_market_type
+
+__all__ = ["analyze_market_outcome_on_ratio", "analyze_market_type"]
+
+
+
+================================================
+FILE: analysis_and_experiments/analysis/market_outcome.py
+================================================
+import argparse
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from analysis_and_experiments.data import load_filtered_markets_with_trades
+
+MAPPED_MARKETS_FOLDER_PATH = Path("datasets/mapped_markets")
+
+
+@dataclass
+class OutcomeAnalysisResult:
+    truncate_and_keep_ratio: float
+    total_market_folders: int
+    filtered_market_count: int
+    yes_count: int
+    no_count: int
+    unknown_count: int
+    yes_ratio: float
+    no_ratio: float
+    unknown_ratio: float
+
+
+def _safe_ratio(count: int, total: int) -> float:
+    """Return ``count / total`` or ``0.0`` when ``total`` is not positive."""
+    if total <= 0:
+        return 0.0
+    return float(count / total)
+
+
+def _count_outcomes(markets: list[dict[str, Any]]) -> tuple[int, int, int]:
+    """Count YES, NO, and unknown outcomes across loaded markets."""
+    yes_count = 0
+    no_count = 0
+    unknown_count = 0
+
+    for market in markets:
+        outcome = str(market.get("outcome", "")).strip().lower()
+        if outcome == "yes":
+            yes_count += 1
+        elif outcome == "no":
+            no_count += 1
+        else:
+            unknown_count += 1
+
+    return yes_count, no_count, unknown_count
+
+
+def analyze_market_outcome_on_ratio(
+    mapped_market_folder_path: Path,
+    truncate_and_keep_ratio: float,
+) -> OutcomeAnalysisResult:
+    """Analyze outcome counts and ratios for a truncated mapped-market dataset."""
+    loaded_markets, _market_id_to_trades, total_market_folders = load_filtered_markets_with_trades(
+        mapped_market_folder_path,
+        truncate_and_keep_ratio,
+    )
+
+    yes_count, no_count, unknown_count = _count_outcomes(loaded_markets)
+    filtered_market_count = len(loaded_markets)
+
+    return OutcomeAnalysisResult(
+        truncate_and_keep_ratio=truncate_and_keep_ratio,
+        total_market_folders=total_market_folders,
+        filtered_market_count=filtered_market_count,
+        yes_count=yes_count,
+        no_count=no_count,
+        unknown_count=unknown_count,
+        yes_ratio=_safe_ratio(yes_count, filtered_market_count),
+        no_ratio=_safe_ratio(no_count, filtered_market_count),
+        unknown_ratio=_safe_ratio(unknown_count, filtered_market_count),
+    )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for market outcome analysis."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Analyze filtered market outcomes using the same loading/filter policy as "
+            "the strategy modules."
+        )
+    )
+    parser.add_argument(
+        "--mapped-markets-folder-path",
+        type=Path,
+        default=MAPPED_MARKETS_FOLDER_PATH,
+        help=f"Path to mapped market folders (default: {MAPPED_MARKETS_FOLDER_PATH}).",
+    )
+    parser.add_argument(
+        "--truncate-and-keep-ratio",
+        type=float,
+        default=0.67,
+        help="Trade truncation ratio used by loader (default: 0.67).",
+    )
+    return parser
+
+
+def _print_result(result: OutcomeAnalysisResult) -> None:
+    """Print a formatted summary of market outcome analysis results."""
+    print(f"\n=== truncate_and_keep_ratio={result.truncate_and_keep_ratio:.2f} ===")
+    print(f"Original market folders: {result.total_market_folders}")
+    print(f"Filtered markets: {result.filtered_market_count}")
+    print(
+        "Outcome counts | "
+        f"yes={result.yes_count}, "
+        f"no={result.no_count}, "
+        f"unknown={result.unknown_count}"
+    )
+    print(
+        "Outcome ratios | "
+        f"yes={result.yes_ratio:.4f}, "
+        f"no={result.no_ratio:.4f}, "
+        f"unknown={result.unknown_ratio:.4f}"
+    )
+
+
+def main() -> None:
+    """Run the market outcome analysis command-line entry point."""
+    args = _build_parser().parse_args()
+    result = analyze_market_outcome_on_ratio(
+        mapped_market_folder_path=args.mapped_markets_folder_path,
+        truncate_and_keep_ratio=args.truncate_and_keep_ratio,
+    )
+    _print_result(result)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+================================================
+FILE: analysis_and_experiments/analysis/market_type.py
+================================================
+import argparse
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from analysis_and_experiments.data import market_filter_policy
+
+MAPPED_MARKETS_FOLDER_PATH = Path("datasets/mapped_markets")
+MARKET_TYPES = ("crypto_bitcoin", "crypto_other", "nfl", "nba", "cfb", "others")
+
+NFL_PATTERN = re.compile(r"\bnfl\b", flags=re.IGNORECASE)
+NBA_PATTERN = re.compile(r"\bnba\b", flags=re.IGNORECASE)
+CFB_PATTERN = re.compile(r"\bcfb\b", flags=re.IGNORECASE)
+UP_PATTERN = re.compile(r"\bup\b", flags=re.IGNORECASE)
+DOWN_PATTERN = re.compile(r"\bdown\b", flags=re.IGNORECASE)
+BITCOIN_PATTERN = re.compile(r"\b(bitcoin|btc)\b", flags=re.IGNORECASE)
+
+
+@dataclass
+class MarketTypeAnalysisResult:
+    total_market_folders: int
+    filtered_market_count: int
+    type_counts: dict[str, int]
+    type_ratios: dict[str, float]
+    market_ids_by_type: dict[str, list[str]]
+
+
+def _safe_ratio(count: int, total: int) -> float:
+    """Return ``count / total`` or ``0.0`` when ``total`` is not positive."""
+    if total <= 0:
+        return 0.0
+    return float(count / total)
+
+
+def _load_market_metadata(market_folder: Path) -> dict[str, object]:
+    """Load ``metadata.json`` for one mapped market folder."""
+    metadata_path = market_folder / "metadata.json"
+    with open(metadata_path, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def _classify_market_type_from_description(description: str) -> str:
+    """Map a market description to one of the predefined market type labels."""
+    if NFL_PATTERN.search(description):
+        return "nfl"
+    if NBA_PATTERN.search(description):
+        return "nba"
+    if CFB_PATTERN.search(description):
+        return "cfb"
+    if UP_PATTERN.search(description) and DOWN_PATTERN.search(description):
+        if BITCOIN_PATTERN.search(description):
+            return "crypto_bitcoin"
+        return "crypto_other"
+    return "others"
+
+
+def analyze_market_type(
+    mapped_market_folder_path: Path,
+    apply_market_filter: bool,
+) -> MarketTypeAnalysisResult:
+    """Cluster mapped markets by description with optional policy filtering."""
+    original_market_folders = list(mapped_market_folder_path.iterdir())
+    market_ids_by_type = {market_type: [] for market_type in MARKET_TYPES}
+
+    for market_folder in original_market_folders:
+        if not market_folder.is_dir():
+            continue
+
+        metadata_path = market_folder / "metadata.json"
+        if not metadata_path.exists():
+            continue
+
+        market = _load_market_metadata(market_folder)
+        if apply_market_filter and not market_filter_policy(market):
+            continue
+
+        description = str(market.get("description", ""))
+        market_type = _classify_market_type_from_description(description)
+        market_id = str(market.get("id", market_folder.name))
+        market_ids_by_type[market_type].append(market_id)
+
+    filtered_market_count = sum(len(ids) for ids in market_ids_by_type.values())
+    type_counts = {market_type: len(ids) for market_type, ids in market_ids_by_type.items()}
+    type_ratios = {
+        market_type: _safe_ratio(count, filtered_market_count)
+        for market_type, count in type_counts.items()
+    }
+
+    return MarketTypeAnalysisResult(
+        total_market_folders=len(original_market_folders),
+        filtered_market_count=filtered_market_count,
+        type_counts=type_counts,
+        type_ratios=type_ratios,
+        market_ids_by_type=market_ids_by_type,
+    )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for market type analysis."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Cluster markets by description rules: nfl, nba, cfb, crypto_bitcoin "
+            "(contains both 'Up' and 'Down', and contains 'Bitcoin' or 'BTC'), "
+            "crypto_other (contains both 'Up' and 'Down' but not Bitcoin/BTC), and others."
+        )
+    )
+    parser.add_argument(
+        "--mapped-markets-folder-path",
+        type=Path,
+        default=MAPPED_MARKETS_FOLDER_PATH,
+        help=f"Path to mapped market folders (default: {MAPPED_MARKETS_FOLDER_PATH}).",
+    )
+    parser.add_argument(
+        "--disable-market-filter",
+        action="store_true",
+        help="Disable market_filter_policy. By default the same market policy is applied.",
+    )
+    parser.add_argument(
+        "--output-json-path",
+        type=Path,
+        default=None,
+        help="Optional path to save clustered market IDs as JSON.",
+    )
+    return parser
+
+
+def _print_result(result: MarketTypeAnalysisResult) -> None:
+    """Print a formatted summary of inferred market type counts and ratios."""
+    print("\n=== Market Type Analysis ===")
+    print(f"Original market folders: {result.total_market_folders}")
+    print(f"Analyzed markets: {result.filtered_market_count}")
+    print(
+        "Type counts | "
+        f"crypto_bitcoin={result.type_counts['crypto_bitcoin']}, "
+        f"crypto_other={result.type_counts['crypto_other']}, "
+        f"nfl={result.type_counts['nfl']}, "
+        f"nba={result.type_counts['nba']}, "
+        f"cfb={result.type_counts['cfb']}, "
+        f"others={result.type_counts['others']}"
+    )
+    print(
+        "Type ratios | "
+        f"crypto_bitcoin={result.type_ratios['crypto_bitcoin']:.4f}, "
+        f"crypto_other={result.type_ratios['crypto_other']:.4f}, "
+        f"nfl={result.type_ratios['nfl']:.4f}, "
+        f"nba={result.type_ratios['nba']:.4f}, "
+        f"cfb={result.type_ratios['cfb']:.4f}, "
+        f"others={result.type_ratios['others']:.4f}"
+    )
+
+
+def _save_clusters(output_json_path: Path, result: MarketTypeAnalysisResult) -> None:
+    """Persist clustered market IDs grouped by inferred market type."""
+    output_json_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_json_path, "w", encoding="utf-8") as file:
+        json.dump(result.market_ids_by_type, file, indent=2)
+    print(f"Saved clusters to: {output_json_path}")
+
+
+def main() -> None:
+    """Run the market type analysis command-line entry point."""
+    args = _build_parser().parse_args()
+    result = analyze_market_type(
+        mapped_market_folder_path=args.mapped_markets_folder_path,
+        apply_market_filter=not args.disable_market_filter,
+    )
+    _print_result(result)
+
+    if args.output_json_path is not None:
+        _save_clusters(args.output_json_path, result)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+================================================
+FILE: analysis_and_experiments/data/__init__.py
+================================================
+"""Data loading and filtering policies."""
+
+from .loader import load_filtered_markets_with_trades, load_market_and_trades
+from .policies import btc_market_filter_policy, market_filter_policy, trade_filter_policy
+
+__all__ = [
+    "btc_market_filter_policy",
+    "load_filtered_markets_with_trades",
+    "load_market_and_trades",
+    "market_filter_policy",
+    "trade_filter_policy",
+]
+
+
+
+================================================
+FILE: analysis_and_experiments/data/loader.py
+================================================
+import csv
+import json
+from pathlib import Path
+from typing import Any, Callable
+
+from .policies import market_filter_policy, trade_filter_policy
+
+TradePolicy = Callable[[dict[str, Any]], bool]
+MarketPolicy = Callable[[dict[str, Any]], bool]
+
+
+def load_market_and_trades(
+    market_folder: Path,
+    truncate_and_keep_ratio: float,
+    *,
+    trade_policy: TradePolicy = trade_filter_policy,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Load market metadata and filtered YES trades from one mapped market folder."""
+    if not (0.0 < truncate_and_keep_ratio <= 1.0):
+        raise ValueError("truncate_and_keep_ratio must be in (0, 1].")
+
+    market_metadata_path = market_folder / "metadata.json"
+    with open(market_metadata_path, "r", encoding="utf-8") as file:
+        market = json.load(file)
+
+    yes_trades_path = market_folder / "yes.csv"
+    yes_trades: list[dict[str, Any]] = []
+    with open(yes_trades_path, "r", encoding="utf-8") as csvfile:
+        csv_reader = csv.DictReader(csvfile)
+        for row in csv_reader:
+            if trade_policy(row):
+                yes_trades.append(row)
+
+    truncate_length = int(len(yes_trades) * truncate_and_keep_ratio)
+    yes_trades = yes_trades[:truncate_length]
+
+    return market, yes_trades
+
+
+def load_filtered_markets_with_trades(
+    mapped_market_folder_path: Path,
+    truncate_and_keep_ratio: float,
+    *,
+    market_policy: MarketPolicy = market_filter_policy,
+    trade_policy: TradePolicy = trade_filter_policy,
+) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], int]:
+    """Load mapped markets and return (filtered markets, market_id->trades, total folders)."""
+    loaded_markets: list[dict[str, Any]] = []
+    market_id_to_trades: dict[str, list[dict[str, Any]]] = {}
+
+    original_market_folders = list(mapped_market_folder_path.iterdir())
+    for market_folder in original_market_folders:
+        if not market_folder.is_dir():
+            continue
+
+        market, yes_trades = load_market_and_trades(
+            market_folder,
+            truncate_and_keep_ratio,
+            trade_policy=trade_policy,
+        )
+        if market_policy(market):
+            market_id = str(market["id"])
+            loaded_markets.append(market)
+            market_id_to_trades[market_id] = yes_trades
+
+    return loaded_markets, market_id_to_trades, len(original_market_folders)
+
+
+
+================================================
+FILE: analysis_and_experiments/data/policies.py
+================================================
+from typing import Any
+
+
+def market_filter_policy(market: dict[str, Any]) -> bool:
+    """Keep markets with enough trade activity."""
+    return int(market.get("yes_trade_count", 0)) > 500
+
+
+def btc_market_filter_policy(market: dict[str, Any]) -> bool:
+    """Keep active BTC/USDT markets with enough YES-side trade activity."""
+    if not market_filter_policy(market):
+        return False
+    description = str(market.get("description", ""))
+    return "btc/usdt" in description.lower()
+
+
+def trade_filter_policy(trade: dict[str, Any]) -> bool:
+    """Keep meaningful BUY trades below near-certain pricing."""
+    return (
+        str(trade.get("side", "")) == "BUY"
+        and float(trade.get("price", 0.0)) < 0.98
+        and float(trade.get("total_usdc", 0.0)) > 2.0
+    )
+
+
+
+================================================
+FILE: analysis_and_experiments/evaluation/__init__.py
+================================================
+"""Model evaluation utilities."""
+
+from .margin import calculate_average_margin_of_victory
+from .metrics import evaluate_binary_metrics
+
+__all__ = ["calculate_average_margin_of_victory", "evaluate_binary_metrics"]
+
+
+
+================================================
+FILE: analysis_and_experiments/evaluation/margin.py
+================================================
+from typing import Sequence
+
+
+def calculate_average_margin_of_victory(
+    probabilities: Sequence[float],
+    reference_prices: Sequence[float],
+) -> float:
+    """Calculate average expected margin using model probability and reference entry price."""
+    if len(probabilities) != len(reference_prices):
+        raise ValueError("probabilities and reference_prices must have the same length.")
+    if not probabilities:
+        raise ValueError("probabilities cannot be empty.")
+
+    margin_of_victory = 0.0
+    for probability, price in zip(probabilities, reference_prices, strict=True):
+        winning_margin = 1.0 - float(price)
+        expected_margin = float(probability) * winning_margin
+        expected_loss = (1.0 - float(probability)) * float(price)
+        margin_of_victory += expected_margin - expected_loss
+
+    return float(margin_of_victory / len(reference_prices))
+
+
+
+================================================
+FILE: analysis_and_experiments/evaluation/metrics.py
+================================================
+from typing import Any, Sequence
+
+import numpy as np
+import torch
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    log_loss,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+    roc_curve,
+)
+
+from analysis_and_experiments.strategies.common import BinaryMetrics
+
+
+def _to_numpy_1d(tensor: torch.Tensor) -> np.ndarray:
+    """Detach a column tensor and return it as a squeezed NumPy array."""
+    return tensor.detach().cpu().squeeze(1).numpy()
+
+
+def evaluate_binary_metrics(
+    y_true_tensor: torch.Tensor,
+    y_prob: Sequence[float] | np.ndarray,
+    *,
+    classification_threshold: float = 0.5,
+) -> BinaryMetrics:
+    """Compute binary metrics and ROC data from true labels and probabilities."""
+    y_true = _to_numpy_1d(y_true_tensor)
+    y_prob_np = np.asarray(list(y_prob), dtype=np.float64)
+    y_prob_clipped = np.clip(y_prob_np, 1e-9, 1.0 - 1e-9)
+    y_pred = (y_prob_np >= classification_threshold).astype(int)
+
+    sklearn_loss = float(log_loss(y_true, y_prob_clipped, labels=[0, 1]))
+    torch_loss = float(
+        torch.nn.BCELoss()(
+            torch.tensor(y_prob_clipped, dtype=torch.float32).unsqueeze(1),
+            y_true_tensor.float(),
+        ).item()
+    )
+
+    accuracy = float(accuracy_score(y_true, y_pred))
+    precision = float(precision_score(y_true, y_pred, zero_division=0))
+    recall = float(recall_score(y_true, y_pred, zero_division=0))
+    f1 = float(f1_score(y_true, y_pred, zero_division=0))
+
+    auc: float | None
+    roc_fpr: list[float] | None
+    roc_tpr: list[float] | None
+    if len(set(y_true.tolist())) < 2:
+        auc = None
+        roc_fpr = None
+        roc_tpr = None
+    else:
+        auc = float(roc_auc_score(y_true, y_prob_np))
+        fpr, tpr, _ = roc_curve(y_true, y_prob_np)
+        roc_fpr = [float(value) for value in fpr]
+        roc_tpr = [float(value) for value in tpr]
+
+    return BinaryMetrics(
+        sklearn_log_loss=sklearn_loss,
+        torch_bce_loss=torch_loss,
+        accuracy=accuracy,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        roc_fpr=roc_fpr,
+        roc_tpr=roc_tpr,
+    )
+
+
+def to_numpy_1d(tensor: torch.Tensor) -> Any:
+    """Compatibility helper for legacy wrappers."""
+    return _to_numpy_1d(tensor)
+
+
+
+================================================
+FILE: analysis_and_experiments/experiments/__init__.py
+================================================
+"""Experiment presets and runner."""
+
+from .runner import main, run_preset
+
+__all__ = ["main", "run_preset"]
+
+
+
+================================================
+FILE: analysis_and_experiments/experiments/io.py
+================================================
+import csv
+import json
+from pathlib import Path
+from typing import Any
+
+from analysis_and_experiments.strategies.common import ExperimentSummary, FoldResult, RunResult
+
+
+def _run_to_flat_row(run: RunResult) -> dict[str, Any]:
+    """Flatten a run result into a single summary row for CSV export."""
+    return {
+        "preset": run.preset,
+        "strategy": run.strategy,
+        "truncate_and_keep_ratio": run.truncate_and_keep_ratio,
+        "desired_num_candlesticks": run.desired_num_candlesticks,
+        "cv_enabled": run.cv_enabled,
+        "cv_folds": run.cv_folds,
+        "train_log_loss": run.train_metrics.sklearn_log_loss,
+        "train_bce_loss": run.train_metrics.torch_bce_loss,
+        "train_accuracy": run.train_metrics.accuracy,
+        "train_precision": run.train_metrics.precision,
+        "train_recall": run.train_metrics.recall,
+        "train_f1": run.train_metrics.f1,
+        "train_auc": run.train_metrics.auc,
+        "val_log_loss": run.val_metrics.sklearn_log_loss,
+        "val_bce_loss": run.val_metrics.torch_bce_loss,
+        "val_accuracy": run.val_metrics.accuracy,
+        "val_precision": run.val_metrics.precision,
+        "val_recall": run.val_metrics.recall,
+        "val_f1": run.val_metrics.f1,
+        "val_auc": run.val_metrics.auc,
+        "average_margin_of_victory": run.average_margin_of_victory,
+        "roc_plot_path": str(run.roc_plot_path) if run.roc_plot_path is not None else None,
+        "gru_train_curve_plot_path": (
+            str(run.gru_train_curve_plot_path) if run.gru_train_curve_plot_path is not None else None
+        ),
+        "gru_val_curve_plot_path": (
+            str(run.gru_val_curve_plot_path) if run.gru_val_curve_plot_path is not None else None
+        ),
+        "train_confusion_matrix_plot_path": (
+            str(run.train_confusion_matrix_plot_path)
+            if run.train_confusion_matrix_plot_path is not None
+            else None
+        ),
+        "val_confusion_matrix_plot_path": (
+            str(run.val_confusion_matrix_plot_path) if run.val_confusion_matrix_plot_path is not None else None
+        ),
+    }
+
+
+def _fold_to_flat_row(run: RunResult, fold: FoldResult) -> dict[str, Any]:
+    """Flatten one fold result into a single summary row for CSV export."""
+    return {
+        "preset": run.preset,
+        "strategy": run.strategy,
+        "truncate_and_keep_ratio": run.truncate_and_keep_ratio,
+        "desired_num_candlesticks": run.desired_num_candlesticks,
+        "cv_enabled": run.cv_enabled,
+        "cv_folds": run.cv_folds,
+        "fold_index": fold.fold_index,
+        "train_size": fold.train_size,
+        "val_size": fold.val_size,
+        "train_log_loss": fold.train_metrics.sklearn_log_loss,
+        "train_bce_loss": fold.train_metrics.torch_bce_loss,
+        "train_accuracy": fold.train_metrics.accuracy,
+        "train_precision": fold.train_metrics.precision,
+        "train_recall": fold.train_metrics.recall,
+        "train_f1": fold.train_metrics.f1,
+        "train_auc": fold.train_metrics.auc,
+        "val_log_loss": fold.val_metrics.sklearn_log_loss,
+        "val_bce_loss": fold.val_metrics.torch_bce_loss,
+        "val_accuracy": fold.val_metrics.accuracy,
+        "val_precision": fold.val_metrics.precision,
+        "val_recall": fold.val_metrics.recall,
+        "val_f1": fold.val_metrics.f1,
+        "val_auc": fold.val_metrics.auc,
+        "average_margin_of_victory": fold.average_margin_of_victory,
+    }
+
+
+def write_summary_outputs(
+    summary: ExperimentSummary,
+    output_root: Path,
+) -> tuple[Path, Path, Path]:
+    """Write experiment summaries to CSV and JSON output files."""
+    result_dir = output_root / "results" / summary.preset
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_path = result_dir / "summary.csv"
+    folds_csv_path = result_dir / "summary_folds.csv"
+    json_path = result_dir / "summary.json"
+
+    rows = [_run_to_flat_row(run) for run in summary.runs]
+    fold_rows = [
+        _fold_to_flat_row(run, fold)
+        for run in summary.runs
+        for fold in run.fold_results
+    ]
+
+    if rows:
+        with open(csv_path, "w", encoding="utf-8", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+    else:
+        with open(csv_path, "w", encoding="utf-8") as csvfile:
+            csvfile.write("\n")
+
+    if fold_rows:
+        with open(folds_csv_path, "w", encoding="utf-8", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=list(fold_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(fold_rows)
+    else:
+        with open(folds_csv_path, "w", encoding="utf-8") as csvfile:
+            csvfile.write("\n")
+
+    payload = {
+        "preset": summary.preset,
+        "runs": [run.to_dict() for run in summary.runs],
+        "ranking_by_margin": summary.ranking_by_margin,
+        "ranking_by_auc": summary.ranking_by_auc,
+    }
+
+    with open(json_path, "w", encoding="utf-8") as jsonfile:
+        json.dump(payload, jsonfile, indent=2)
+
+    return csv_path, folds_csv_path, json_path
+
+
+
+================================================
+FILE: analysis_and_experiments/experiments/presets.py
+================================================
+from dataclasses import dataclass
+
+DEFAULT_RATIO_SWEEP = [0.33, 0.50, 0.67, 0.80, 0.95]
+DEFAULT_GRU_CANDLES = 40
+DEFAULT_EXP4_CANDLE_SWEEP = [40, 60, 80, 100, 120, 140, 160]
+PRESET_ORDER = ["exp1", "exp2", "exp3", "exp4", "exp5"]
+
+
+@dataclass
+class ExperimentTask:
+    preset: str
+    strategy: str
+    truncate_and_keep_ratio: float
+    desired_num_candlesticks: int | None
+
+
+def _validate_ratios(ratios: list[float]) -> None:
+    """Validate that ratio overrides are present and fall within ``(0, 1]``."""
+    if not ratios:
+        raise ValueError("ratios cannot be empty.")
+    for ratio in ratios:
+        if ratio <= 0.0 or ratio > 1.0:
+            raise ValueError(f"ratio must be in (0, 1], got {ratio}.")
+
+
+def _validate_candles(candles: list[int]) -> None:
+    """Validate that GRU candlestick counts are present and strictly positive."""
+    if not candles:
+        raise ValueError("gru candle list cannot be empty.")
+    for candle in candles:
+        if candle <= 0:
+            raise ValueError(f"candle count must be > 0, got {candle}.")
+
+
+def build_preset_tasks(
+    preset: str,
+    *,
+    ratios_override: list[float] | None = None,
+    gru_candles_override: list[int] | None = None,
+) -> list[ExperimentTask]:
+    """Build the ordered experiment tasks required for a named preset."""
+    if preset not in PRESET_ORDER:
+        raise ValueError(f"Unsupported preset: {preset}")
+
+    ratios = ratios_override if ratios_override is not None else DEFAULT_RATIO_SWEEP
+    _validate_ratios(ratios)
+
+    default_candles = gru_candles_override[0] if gru_candles_override else DEFAULT_GRU_CANDLES
+    if default_candles <= 0:
+        raise ValueError("gru candle count must be > 0.")
+
+    tasks: list[ExperimentTask] = []
+
+    if preset == "exp1":
+        tasks.append(
+            ExperimentTask(
+                preset="exp1",
+                strategy="gru",
+                truncate_and_keep_ratio=ratios[0] if ratios_override else 0.67,
+                desired_num_candlesticks=default_candles,
+            )
+        )
+
+    elif preset == "exp2":
+        tasks.append(
+            ExperimentTask(
+                preset="exp2",
+                strategy="tabular",
+                truncate_and_keep_ratio=ratios[0] if ratios_override else 0.67,
+                desired_num_candlesticks=None,
+            )
+        )
+
+    elif preset in {"exp3", "exp5"}:
+        ratio_sweep = ratios_override if ratios_override else DEFAULT_RATIO_SWEEP
+        for ratio in ratio_sweep:
+            tasks.append(
+                ExperimentTask(
+                    preset=preset,
+                    strategy="gru",
+                    truncate_and_keep_ratio=ratio,
+                    desired_num_candlesticks=default_candles,
+                )
+            )
+            tasks.append(
+                ExperimentTask(
+                    preset=preset,
+                    strategy="tabular",
+                    truncate_and_keep_ratio=ratio,
+                    desired_num_candlesticks=None,
+                )
+            )
+
+    elif preset == "exp4":
+        candle_sweep = gru_candles_override if gru_candles_override else DEFAULT_EXP4_CANDLE_SWEEP
+        _validate_candles(candle_sweep)
+        ratio = ratios[0] if ratios_override else 0.67
+        for candle_count in candle_sweep:
+            tasks.append(
+                ExperimentTask(
+                    preset="exp4",
+                    strategy="gru",
+                    truncate_and_keep_ratio=ratio,
+                    desired_num_candlesticks=candle_count,
+                )
+            )
+
+    return tasks
+
+
+
+================================================
+FILE: analysis_and_experiments/experiments/runner.py
+================================================
+import argparse
+from pathlib import Path
+from typing import Any, Callable
+
+from analysis_and_experiments.data import btc_market_filter_policy, market_filter_policy
+from analysis_and_experiments.experiments.io import write_summary_outputs
+from analysis_and_experiments.experiments.presets import PRESET_ORDER, build_preset_tasks
+from analysis_and_experiments.strategies import (
+    ExperimentSummary,
+    RunResult,
+    run_gru_experiment_on_ratio,
+    run_tabular_experiment_on_ratio,
+)
+
+
+def _parse_csv_floats(raw: str | None) -> list[float] | None:
+    """Parse a comma-separated list of floats from CLI input."""
+    if raw is None:
+        return None
+    values = [chunk.strip() for chunk in raw.split(",") if chunk.strip()]
+    if not values:
+        return None
+    return [float(value) for value in values]
+
+
+def _parse_csv_ints(raw: str | None) -> list[int] | None:
+    """Parse a comma-separated list of integers from CLI input."""
+    if raw is None:
+        return None
+    values = [chunk.strip() for chunk in raw.split(",") if chunk.strip()]
+    if not values:
+        return None
+    return [int(value) for value in values]
+
+
+def _select_market_policy_for_preset(preset: str) -> Callable[[dict[str, Any]], bool]:
+    """Return the market filter policy associated with a preset name."""
+    if preset == "exp5":
+        return btc_market_filter_policy
+    return market_filter_policy
+
+
+def _build_rankings(runs: list[RunResult]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Build rankings ordered by expected margin and validation AUC."""
+    ranking_by_margin = []
+    for rank, run in enumerate(
+        sorted(runs, key=lambda item: item.average_margin_of_victory, reverse=True),
+        start=1,
+    ):
+        ranking_by_margin.append(
+            {
+                "rank": rank,
+                "strategy": run.strategy,
+                "truncate_and_keep_ratio": run.truncate_and_keep_ratio,
+                "desired_num_candlesticks": run.desired_num_candlesticks,
+                "val_auc": run.val_metrics.auc,
+                "average_margin_of_victory": run.average_margin_of_victory,
+            }
+        )
+
+    ranking_by_auc = []
+    for rank, run in enumerate(
+        sorted(
+            runs,
+            key=lambda item: item.val_metrics.auc if item.val_metrics.auc is not None else float("-inf"),
+            reverse=True,
+        ),
+        start=1,
+    ):
+        ranking_by_auc.append(
+            {
+                "rank": rank,
+                "strategy": run.strategy,
+                "truncate_and_keep_ratio": run.truncate_and_keep_ratio,
+                "desired_num_candlesticks": run.desired_num_candlesticks,
+                "val_auc": run.val_metrics.auc,
+                "average_margin_of_victory": run.average_margin_of_victory,
+            }
+        )
+
+    return ranking_by_margin, ranking_by_auc
+
+
+def _print_run_result(run: RunResult) -> None:
+    """Print a formatted summary of one completed experiment run."""
+    train_auc_text = f"{run.train_metrics.auc:.4f}" if run.train_metrics.auc is not None else "N/A"
+    val_auc_text = f"{run.val_metrics.auc:.4f}" if run.val_metrics.auc is not None else "N/A"
+    mode_text = f"cv={run.cv_folds}-fold" if run.cv_enabled else "single-split"
+    print(
+        f"[{run.preset}] strategy={run.strategy}, ratio={run.truncate_and_keep_ratio:.2f}, "
+        f"candles={run.desired_num_candlesticks}, mode={mode_text}"
+    )
+    print(
+        "Train | "
+        f"log_loss={run.train_metrics.sklearn_log_loss:.6f}, "
+        f"bce_loss={run.train_metrics.torch_bce_loss:.6f}, "
+        f"acc={run.train_metrics.accuracy:.4f}, "
+        f"precision={run.train_metrics.precision:.4f}, "
+        f"recall={run.train_metrics.recall:.4f}, "
+        f"f1={run.train_metrics.f1:.4f}, "
+        f"auc={train_auc_text}"
+    )
+    print(
+        "Val   | "
+        f"log_loss={run.val_metrics.sklearn_log_loss:.6f}, "
+        f"bce_loss={run.val_metrics.torch_bce_loss:.6f}, "
+        f"acc={run.val_metrics.accuracy:.4f}, "
+        f"precision={run.val_metrics.precision:.4f}, "
+        f"recall={run.val_metrics.recall:.4f}, "
+        f"f1={run.val_metrics.f1:.4f}, "
+        f"auc={val_auc_text}, "
+        f"margin={run.average_margin_of_victory:.6f}"
+    )
+    if run.roc_plot_path is not None:
+        print(f"ROC plot saved: {run.roc_plot_path}")
+    else:
+        print("ROC plot skipped: validation labels contain a single class.")
+    if run.gru_train_curve_plot_path is not None:
+        print(f"GRU train/val loss plot saved: {run.gru_train_curve_plot_path}")
+    if run.gru_val_curve_plot_path is not None:
+        print(f"GRU train/val accuracy plot saved: {run.gru_val_curve_plot_path}")
+    if run.train_confusion_matrix_plot_path is not None:
+        print(f"Train confusion matrix saved: {run.train_confusion_matrix_plot_path}")
+    if run.val_confusion_matrix_plot_path is not None:
+        print(f"Val confusion matrix saved: {run.val_confusion_matrix_plot_path}")
+    if run.fold_results:
+        print(f"Recorded {len(run.fold_results)} fold metric rows.")
+
+
+def run_preset(
+    preset: str,
+    *,
+    mapped_markets_path: Path,
+    output_root: Path,
+    ratios_override: list[float] | None = None,
+    gru_candles_override: list[int] | None = None,
+    cv_folds: int = 5,
+    disable_cv: bool = False,
+) -> ExperimentSummary:
+    """Execute all tasks for a preset and persist the aggregated outputs."""
+    tasks = build_preset_tasks(
+        preset,
+        ratios_override=ratios_override,
+        gru_candles_override=gru_candles_override,
+    )
+    market_policy = _select_market_policy_for_preset(preset)
+
+    print(f"Experiment artifacts are written under: {output_root}")
+
+    runs: list[RunResult] = []
+    for task in tasks:
+        print(
+            f"\nRunning task: preset={task.preset}, strategy={task.strategy}, "
+            f"ratio={task.truncate_and_keep_ratio:.2f}, candles={task.desired_num_candlesticks}"
+        )
+
+        if task.strategy == "gru":
+            result = run_gru_experiment_on_ratio(
+                mapped_markets_path,
+                task.truncate_and_keep_ratio,
+                preset=task.preset,
+                desired_num_candlesticks=task.desired_num_candlesticks or 40,
+                market_policy=market_policy,
+                use_cross_validation=not disable_cv,
+                cv_folds=cv_folds,
+                roc_output_dir=output_root / "plots" / "roc" / "gru",
+                train_val_curves_output_dir=output_root / "plots" / "training_curves" / "gru",
+                confusion_matrix_output_dir=output_root / "plots" / "confusion_matrix" / "gru",
+            )
+        elif task.strategy == "tabular":
+            result = run_tabular_experiment_on_ratio(
+                mapped_markets_path,
+                task.truncate_and_keep_ratio,
+                preset=task.preset,
+                market_policy=market_policy,
+                use_cross_validation=not disable_cv,
+                cv_folds=cv_folds,
+                roc_output_dir=output_root / "plots" / "roc" / "tabular",
+                confusion_matrix_output_dir=output_root / "plots" / "confusion_matrix" / "tabular",
+            )
+        else:
+            raise ValueError(f"Unsupported strategy: {task.strategy}")
+
+        _print_run_result(result)
+        runs.append(result)
+
+    ranking_by_margin, ranking_by_auc = _build_rankings(runs)
+    summary = ExperimentSummary(
+        preset=preset,
+        runs=runs,
+        ranking_by_margin=ranking_by_margin,
+        ranking_by_auc=ranking_by_auc,
+    )
+
+    csv_path, folds_csv_path, json_path = write_summary_outputs(summary, output_root=output_root)
+    print(f"\nSaved summary CSV: {csv_path}")
+    print(f"Saved fold summary CSV: {folds_csv_path}")
+    print(f"Saved summary JSON: {json_path}")
+
+    return summary
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for modular experiment presets."""
+    parser = argparse.ArgumentParser(
+        description="Run modular experiment presets for prediction-market models."
+    )
+    parser.add_argument(
+        "--preset",
+        choices=[*PRESET_ORDER, "all"],
+        default="all",
+        help="Preset to run (default: all).",
+    )
+    parser.add_argument(
+        "--mapped-markets-path",
+        type=Path,
+        default=Path("datasets/mapped_markets"),
+        help="Path to mapped market folder (default: datasets/mapped_markets).",
+    )
+    parser.add_argument(
+        "--ratios",
+        type=str,
+        default=None,
+        help="Optional CSV ratios override, e.g. 0.33,0.67,0.95",
+    )
+    parser.add_argument(
+        "--gru-candles",
+        type=str,
+        default=None,
+        help="Optional CSV GRU candle override, e.g. 40,60,80",
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=Path("outputs"),
+        help="Experiment output root (default: outputs).",
+    )
+    parser.add_argument(
+        "--cv-folds",
+        type=int,
+        default=5,
+        help="Number of stratified CV folds when CV is enabled (default: 5).",
+    )
+    parser.add_argument(
+        "--disable-cv",
+        action="store_true",
+        help="Disable cross-validation and use legacy single train/val split.",
+    )
+    return parser
+
+
+def main() -> None:
+    """Run the experiment runner CLI and dispatch the requested presets."""
+    args = _build_parser().parse_args()
+    ratios_override = _parse_csv_floats(args.ratios)
+    gru_candles_override = _parse_csv_ints(args.gru_candles)
+
+    if args.preset == "all":
+        for preset in PRESET_ORDER:
+            print(f"\n================ {preset} ================")
+            run_preset(
+                preset,
+                mapped_markets_path=args.mapped_markets_path,
+                output_root=args.output_root,
+                ratios_override=ratios_override,
+                gru_candles_override=gru_candles_override,
+                cv_folds=args.cv_folds,
+                disable_cv=args.disable_cv,
+            )
+    else:
+        run_preset(
+            args.preset,
+            mapped_markets_path=args.mapped_markets_path,
+            output_root=args.output_root,
+            ratios_override=ratios_override,
+            gru_candles_override=gru_candles_override,
+            cv_folds=args.cv_folds,
+            disable_cv=args.disable_cv,
+        )
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+================================================
+FILE: analysis_and_experiments/plotting/__init__.py
+================================================
+"""Plotting helpers."""
+
+from .confusion_matrix import save_confusion_matrix_plot
+from .roc import save_roc_plot
+from .training_curves import save_train_val_metric_plot
+
+__all__ = [
+    "save_roc_plot",
+    "save_confusion_matrix_plot",
+    "save_train_val_metric_plot",
+]
+
+
+
+================================================
+FILE: analysis_and_experiments/plotting/confusion_matrix.py
+================================================
+import os
+from pathlib import Path
+from typing import Sequence
+
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.metrics import confusion_matrix
+
+
+def save_confusion_matrix_plot(
+    *,
+    output_path: Path,
+    title: str,
+    y_true: Sequence[int],
+    y_pred: Sequence[int],
+    class_names: tuple[str, str] = ("No", "Yes"),
+    dpi: int = 300,
+) -> Path:
+    """Render and save a confusion matrix image."""
+    matrix = confusion_matrix(y_true, y_pred, labels=[0, 1])
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    image = ax.imshow(matrix, cmap="Blues")
+    fig.colorbar(image, ax=ax)
+
+    ticks = np.arange(len(class_names))
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_xticklabels(class_names)
+    ax.set_yticklabels(class_names)
+    ax.set_xlabel("Predicted Label")
+    ax.set_ylabel("True Label")
+    ax.set_title(title)
+
+    threshold = matrix.max() / 2.0 if matrix.size else 0.0
+    for row_index in range(matrix.shape[0]):
+        for col_index in range(matrix.shape[1]):
+            value = int(matrix[row_index, col_index])
+            text_color = "white" if matrix[row_index, col_index] > threshold else "black"
+            ax.text(
+                col_index,
+                row_index,
+                f"{value}",
+                ha="center",
+                va="center",
+                color=text_color,
+            )
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=dpi)
+    plt.close(fig)
+    return output_path
+
+
+
+================================================
+FILE: analysis_and_experiments/plotting/roc.py
+================================================
+import os
+from pathlib import Path
+
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
+def save_roc_plot(
+    *,
+    output_path: Path,
+    title: str,
+    roc_fpr: list[float] | None,
+    roc_tpr: list[float] | None,
+    auc: float | None,
+    dpi: int = 300,
+) -> Path | None:
+    """Render and save an ROC curve when ROC data is available."""
+    if roc_fpr is None or roc_tpr is None or auc is None:
+        return None
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    plt.figure(figsize=(7, 5))
+    plt.plot(roc_fpr, roc_tpr, label=f"AUC={auc:.4f}", linewidth=2)
+    plt.plot([0.0, 1.0], [0.0, 1.0], linestyle="--", linewidth=1)
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title(title)
+    plt.legend(loc="lower right")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=dpi)
+    plt.close()
+    return output_path
+
+
+
+================================================
+FILE: analysis_and_experiments/plotting/training_curves.py
+================================================
+import os
+from pathlib import Path
+from typing import Sequence
+
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
+def save_train_val_metric_plot(
+    *,
+    output_path: Path,
+    title: str,
+    metric_name: str,
+    train_values: Sequence[float],
+    val_values: Sequence[float],
+    y_limit: tuple[float, float] | None = None,
+    dpi: int = 300,
+) -> Path:
+    """Plot and save train versus validation metric curves across epochs."""
+    if len(train_values) != len(val_values):
+        raise ValueError("train_values and val_values must have the same length.")
+    if not train_values:
+        raise ValueError("train_values cannot be empty.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    epochs = list(range(1, len(train_values) + 1))
+    fig, axis = plt.subplots(figsize=(8, 5))
+    axis.plot(
+        epochs,
+        list(train_values),
+        color="#1f77b4",
+        linewidth=2,
+        label=f"Train {metric_name}",
+    )
+    axis.plot(
+        epochs,
+        list(val_values),
+        color="#ff7f0e",
+        linewidth=2,
+        label=f"Val {metric_name}",
+    )
+
+    axis.set_xlabel("Epoch")
+    axis.set_ylabel(metric_name)
+    axis.set_title(title)
+    if y_limit is not None:
+        axis.set_ylim(*y_limit)
+    axis.legend(loc="best")
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=dpi)
+    plt.close(fig)
+    return output_path
+
+
+
+================================================
+FILE: analysis_and_experiments/strategies/__init__.py
+================================================
+"""Strategy training modules."""
+
+from .common import BinaryMetrics, ExperimentSummary, FoldResult, RunResult, average_binary_metrics
+from .gru import run_gru_experiment_on_ratio
+from .tabular import run_tabular_experiment_on_ratio
+
+__all__ = [
+    "BinaryMetrics",
+    "ExperimentSummary",
+    "FoldResult",
+    "RunResult",
+    "average_binary_metrics",
+    "run_gru_experiment_on_ratio",
+    "run_tabular_experiment_on_ratio",
+]
+
+
+
+================================================
+FILE: analysis_and_experiments/strategies/common.py
+================================================
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+
+@dataclass
+class BinaryMetrics:
+    sklearn_log_loss: float
+    torch_bce_loss: float
+    accuracy: float
+    precision: float
+    recall: float
+    f1: float
+    auc: float | None
+    roc_fpr: list[float] | None
+    roc_tpr: list[float] | None
+
+
+@dataclass
+class FoldResult:
+    fold_index: int
+    train_size: int
+    val_size: int
+    train_metrics: BinaryMetrics
+    val_metrics: BinaryMetrics
+    average_margin_of_victory: float
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the fold result dataclass to a dictionary."""
+        return asdict(self)
+
+
+@dataclass
+class RunResult:
+    preset: str
+    strategy: str
+    truncate_and_keep_ratio: float
+    desired_num_candlesticks: int | None
+    cv_enabled: bool
+    cv_folds: int | None
+    train_metrics: BinaryMetrics
+    val_metrics: BinaryMetrics
+    average_margin_of_victory: float
+    fold_results: list[FoldResult]
+    roc_plot_path: Path | None
+    gru_train_curve_plot_path: Path | None = None
+    gru_val_curve_plot_path: Path | None = None
+    train_confusion_matrix_plot_path: Path | None = None
+    val_confusion_matrix_plot_path: Path | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the run result dataclass with path fields converted to strings."""
+        payload = asdict(self)
+        payload["roc_plot_path"] = str(self.roc_plot_path) if self.roc_plot_path is not None else None
+        payload["gru_train_curve_plot_path"] = (
+            str(self.gru_train_curve_plot_path)
+            if self.gru_train_curve_plot_path is not None
+            else None
+        )
+        payload["gru_val_curve_plot_path"] = (
+            str(self.gru_val_curve_plot_path) if self.gru_val_curve_plot_path is not None else None
+        )
+        payload["train_confusion_matrix_plot_path"] = (
+            str(self.train_confusion_matrix_plot_path)
+            if self.train_confusion_matrix_plot_path is not None
+            else None
+        )
+        payload["val_confusion_matrix_plot_path"] = (
+            str(self.val_confusion_matrix_plot_path)
+            if self.val_confusion_matrix_plot_path is not None
+            else None
+        )
+        payload["fold_results"] = [fold.to_dict() for fold in self.fold_results]
+        return payload
+
+
+@dataclass
+class ExperimentSummary:
+    preset: str
+    runs: list[RunResult]
+    ranking_by_margin: list[dict[str, Any]]
+    ranking_by_auc: list[dict[str, Any]]
+
+
+def average_binary_metrics(metrics: list[BinaryMetrics]) -> BinaryMetrics:
+    """Average scalar binary metrics across multiple evaluation results."""
+    if not metrics:
+        raise ValueError("metrics cannot be empty.")
+
+    auc_values = [metric.auc for metric in metrics if metric.auc is not None]
+
+    return BinaryMetrics(
+        sklearn_log_loss=float(sum(metric.sklearn_log_loss for metric in metrics) / len(metrics)),
+        torch_bce_loss=float(sum(metric.torch_bce_loss for metric in metrics) / len(metrics)),
+        accuracy=float(sum(metric.accuracy for metric in metrics) / len(metrics)),
+        precision=float(sum(metric.precision for metric in metrics) / len(metrics)),
+        recall=float(sum(metric.recall for metric in metrics) / len(metrics)),
+        f1=float(sum(metric.f1 for metric in metrics) / len(metrics)),
+        auc=float(sum(auc_values) / len(auc_values)) if auc_values else None,
+        roc_fpr=None,
+        roc_tpr=None,
+    )
+
+
+
+================================================
+FILE: analysis_and_experiments/strategies/gru.py
+================================================
+from copy import deepcopy
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
+
+import torch
+import torch.nn as nn
+from sklearn.model_selection import StratifiedKFold
+
+from analysis_and_experiments.data import load_filtered_markets_with_trades
+from analysis_and_experiments.evaluation import (
+    calculate_average_margin_of_victory,
+    evaluate_binary_metrics,
+)
+from analysis_and_experiments.plotting import (
+    save_confusion_matrix_plot,
+    save_train_val_metric_plot,
+    save_roc_plot,
+)
+from analysis_and_experiments.strategies.common import (
+    FoldResult,
+    RunResult,
+    average_binary_metrics,
+)
+
+CLASSIFICATION_THRESHOLD = 0.5
+
+
+@dataclass
+class CandleStick:
+    open_price: float
+    close_price: float
+    low_price: float
+    high_price: float
+    total_volume: float
+    weighted_average_price: float
+
+
+@dataclass
+class GRUTrainingHistory:
+    train_loss: list[float]
+    train_accuracy: list[float]
+    val_loss: list[float]
+    val_accuracy: list[float]
+
+
+def get_candlestick_data_from_trades(
+    trades: list[dict[str, Any]],
+    interval_trade: int,
+) -> list[CandleStick]:
+    """Aggregate trades into candlestick records over fixed trade intervals."""
+    candlesticks: list[CandleStick] = []
+    for start_index in range(0, len(trades), interval_trade):
+        interval_trades = trades[start_index : start_index + interval_trade]
+        if not interval_trades:
+            continue
+
+        open_price = float(interval_trades[0]["price"])
+        close_price = float(interval_trades[-1]["price"])
+        low_price = min(float(trade["price"]) for trade in interval_trades)
+        high_price = max(float(trade["price"]) for trade in interval_trades)
+        total_volume = sum(float(trade["total_usdc"]) for trade in interval_trades)
+        if total_volume <= 0:
+            raise ValueError("Total volume must be > 0 to calculate weighted_average_price.")
+
+        weighted_average_price = (
+            sum(float(trade["price"]) * float(trade["total_usdc"]) for trade in interval_trades)
+            / total_volume
+        )
+        candlesticks.append(
+            CandleStick(
+                open_price=open_price,
+                close_price=close_price,
+                low_price=low_price,
+                high_price=high_price,
+                total_volume=total_volume,
+                weighted_average_price=weighted_average_price,
+            )
+        )
+    return candlesticks
+
+
+def get_expected_candlestick_interval(num_trades: int, desired_num_candlesticks: int) -> int:
+    """Choose a trade interval that yields roughly the target candlestick count."""
+    return max(1, num_trades // desired_num_candlesticks)
+
+
+def build_gru_dataset(
+    loaded_markets: list[dict[str, Any]],
+    market_id_to_candlestick_data: dict[str, list[CandleStick]],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Build GRU feature and label tensors from per-market candlestick sequences."""
+    X: list[list[list[float]]] = []
+    y: list[int] = []
+    for market in loaded_markets:
+        market_id = str(market["id"])
+        candlestick_data = market_id_to_candlestick_data[market_id]
+        market_X = [
+            [
+                candlestick.open_price,
+                candlestick.close_price,
+                candlestick.low_price,
+                candlestick.high_price,
+                candlestick.total_volume,
+                candlestick.weighted_average_price,
+            ]
+            for candlestick in candlestick_data
+        ]
+        X.append(market_X)
+        y.append(1 if str(market.get("outcome", "")).lower() == "yes" else 0)
+
+    min_candlestick_length = min(len(market_X) for market_X in X)
+    X = [market_X[:min_candlestick_length] for market_X in X]
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+
+    # Normalize volume feature market-by-market.
+    for sample_index in range(X_tensor.shape[0]):
+        total_volume = X_tensor[sample_index, :, 4]
+        max_volume = torch.max(total_volume)
+        min_volume = torch.min(total_volume)
+        if max_volume == min_volume:
+            X_tensor[sample_index, :, 4] = 0.0
+        else:
+            X_tensor[sample_index, :, 4] = (total_volume - min_volume) / (max_volume - min_volume)
+
+    y_tensor = torch.tensor(y, dtype=torch.long).unsqueeze(1)
+    return X_tensor, y_tensor
+
+
+def _split_by_indices(
+    X: torch.Tensor,
+    y: torch.Tensor,
+    train_indices: torch.Tensor,
+    val_indices: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Split GRU tensors into train and validation subsets by index."""
+    X_train = X[train_indices]
+    y_train = y[train_indices]
+    X_val = X[val_indices]
+    y_val = y[val_indices]
+    return X_train, y_train, X_val, y_val
+
+
+def prepare_data_for_gru_training(
+    loaded_markets: list[dict[str, Any]],
+    market_id_to_candlestick_data: dict[str, list[CandleStick]],
+    *,
+    val_ratio: float,
+    seed: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Build, shuffle, and split the GRU dataset for a single validation run."""
+    X_tensor, y_tensor = build_gru_dataset(
+        loaded_markets,
+        market_id_to_candlestick_data,
+    )
+
+    generator = torch.Generator().manual_seed(seed)
+    shuffled_indices = torch.randperm(X_tensor.shape[0], generator=generator)
+    X_shuffled = X_tensor[shuffled_indices]
+    y_shuffled = y_tensor[shuffled_indices]
+
+    train_size = int((1 - val_ratio) * X_shuffled.shape[0])
+    if train_size <= 0 or train_size >= X_shuffled.shape[0]:
+        raise ValueError(
+            f"Invalid split with val_ratio={val_ratio} for dataset size={X_shuffled.shape[0]}."
+        )
+
+    X_train, y_train = X_shuffled[:train_size], y_shuffled[:train_size]
+    X_val, y_val = X_shuffled[train_size:], y_shuffled[train_size:]
+    return X_train, y_train, X_val, y_val
+
+
+def gru_training(
+    X_train: torch.Tensor,
+    y_train: torch.Tensor,
+    X_val: torch.Tensor,
+    y_val: torch.Tensor,
+    *,
+    seed: int,
+) -> tuple[nn.GRU, nn.Linear, GRUTrainingHistory]:
+    """Train the GRU classifier and return the best checkpoint and history."""
+    torch.manual_seed(seed)
+
+    feature_size = X_train.shape[2]
+    hidden_size = 32
+    num_layers = 2
+    output_size = 1
+
+    gru_model = nn.GRU(
+        input_size=feature_size,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        batch_first=True,
+    )
+    linear_layer = nn.Linear(hidden_size, output_size)
+
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = torch.optim.Adam(list(gru_model.parameters()) + list(linear_layer.parameters()), lr=0.001)
+    num_epochs = 200
+
+    best_gru_model_state = deepcopy(gru_model.state_dict())
+    best_linear_layer_state = deepcopy(linear_layer.state_dict())
+    best_val_accuracy = 0.0
+    train_loss_history: list[float] = []
+    train_accuracy_history: list[float] = []
+    val_loss_history: list[float] = []
+    val_accuracy_history: list[float] = []
+
+    for epoch in range(num_epochs):
+        gru_model.train()
+        optimizer.zero_grad()
+        output, _ = gru_model(X_train)
+        last_hidden_state = output[:, -1, :]
+        logits = linear_layer(last_hidden_state)
+        loss = criterion(logits, y_train.float())
+        loss.backward()
+        optimizer.step()
+
+        predicted = (torch.sigmoid(logits) > CLASSIFICATION_THRESHOLD).long()
+        train_correct = (predicted == y_train).sum().item()
+        train_total = y_train.size(0)
+        train_loss = float(loss.item())
+        train_accuracy = float(train_correct / train_total)
+
+        gru_model.eval()
+        with torch.no_grad():
+            val_output, _ = gru_model(X_val)
+            val_last_hidden_state = val_output[:, -1, :]
+            val_logits = linear_layer(val_last_hidden_state)
+            val_loss = float(criterion(val_logits, y_val.float()).item())
+            val_predicted = (torch.sigmoid(val_logits) > CLASSIFICATION_THRESHOLD).long()
+            val_correct = (val_predicted == y_val).sum().item()
+            val_total = y_val.size(0)
+            val_accuracy = val_correct / val_total
+
+        train_loss_history.append(train_loss)
+        train_accuracy_history.append(train_accuracy)
+        val_loss_history.append(val_loss)
+        val_accuracy_history.append(float(val_accuracy))
+
+        if val_accuracy > best_val_accuracy:
+            best_val_accuracy = val_accuracy
+            best_gru_model_state = deepcopy(gru_model.state_dict())
+            best_linear_layer_state = deepcopy(linear_layer.state_dict())
+
+        if (epoch + 1) % 10 == 0:
+            print(
+                f"Epoch [{epoch + 1}/{num_epochs}], "
+                f"Train Loss: {train_loss:.4f}, Train Acc: {train_accuracy:.4f}, "
+                f"Val Loss: {val_loss:.4f}, Val Acc: {val_correct / val_total:.4f}"
+            )
+
+    print(f"Loading best model state with Val Accuracy: {best_val_accuracy:.4f}")
+    gru_model.load_state_dict(best_gru_model_state)
+    linear_layer.load_state_dict(best_linear_layer_state)
+    return (
+        gru_model,
+        linear_layer,
+        GRUTrainingHistory(
+            train_loss=train_loss_history,
+            train_accuracy=train_accuracy_history,
+            val_loss=val_loss_history,
+            val_accuracy=val_accuracy_history,
+        ),
+    )
+
+
+def _predict_probabilities(gru_model: nn.Module, linear_layer: nn.Module, X: torch.Tensor) -> list[float]:
+    """Predict positive-class probabilities for GRU inputs."""
+    gru_model.eval()
+    with torch.no_grad():
+        output, _ = gru_model(X)
+        last_hidden_state = output[:, -1, :]
+        logits = linear_layer(last_hidden_state)
+        probabilities = torch.sigmoid(logits).squeeze(1).detach().cpu().numpy().tolist()
+        return [float(value) for value in probabilities]
+
+
+def _validate_cv_folds(y: torch.Tensor, cv_folds: int) -> None:
+    """Validate that each class has enough samples for the requested CV folds."""
+    if cv_folds < 2:
+        raise ValueError(f"cv_folds must be >= 2 when CV is enabled, got {cv_folds}.")
+
+    labels = y.detach().cpu().squeeze(1)
+    class_counts = torch.bincount(labels, minlength=2)
+    min_class_count = int(torch.min(class_counts).item())
+    if min_class_count < cv_folds:
+        raise ValueError(
+            "Invalid cv_folds: smallest class count is "
+            f"{min_class_count}, but cv_folds={cv_folds}. "
+            "Reduce --cv-folds or disable CV."
+        )
+
+
+def _average_histories(histories: list[GRUTrainingHistory]) -> GRUTrainingHistory:
+    """Average GRU training histories across cross-validation folds."""
+    if not histories:
+        raise ValueError("histories cannot be empty.")
+
+    num_epochs = len(histories[0].train_loss)
+    for history in histories:
+        if len(history.train_loss) != num_epochs:
+            raise ValueError("All history objects must share the same train_loss length.")
+        if len(history.train_accuracy) != num_epochs:
+            raise ValueError("All history objects must share the same train_accuracy length.")
+        if len(history.val_loss) != num_epochs:
+            raise ValueError("All history objects must share the same val_loss length.")
+        if len(history.val_accuracy) != num_epochs:
+            raise ValueError("All history objects must share the same val_accuracy length.")
+
+    return GRUTrainingHistory(
+        train_loss=[
+            float(sum(history.train_loss[epoch] for history in histories) / len(histories))
+            for epoch in range(num_epochs)
+        ],
+        train_accuracy=[
+            float(sum(history.train_accuracy[epoch] for history in histories) / len(histories))
+            for epoch in range(num_epochs)
+        ],
+        val_loss=[
+            float(sum(history.val_loss[epoch] for history in histories) / len(histories))
+            for epoch in range(num_epochs)
+        ],
+        val_accuracy=[
+            float(sum(history.val_accuracy[epoch] for history in histories) / len(histories))
+            for epoch in range(num_epochs)
+        ],
+    )
+
+
+def run_gru_experiment_on_ratio(
+    mapped_market_folder_path: Path,
+    truncate_and_keep_ratio: float,
+    *,
+    preset: str,
+    desired_num_candlesticks: int = 40,
+    market_policy: Callable[[dict[str, Any]], bool] | None = None,
+    val_ratio: float = 0.2,
+    seed: int = 42,
+    use_cross_validation: bool = True,
+    cv_folds: int = 5,
+    roc_output_dir: Path,
+    train_val_curves_output_dir: Path | None = None,
+    confusion_matrix_output_dir: Path | None = None,
+) -> RunResult:
+    """Run the GRU experiment for one truncation ratio and save its artifacts."""
+    if train_val_curves_output_dir is None:
+        train_val_curves_output_dir = roc_output_dir.parent.parent / "training_curves" / "gru"
+    if confusion_matrix_output_dir is None:
+        confusion_matrix_output_dir = roc_output_dir.parent.parent / "confusion_matrix" / "gru"
+
+    if market_policy is None:
+        loaded_markets, loaded_market_id_to_trades, total_market_folders = load_filtered_markets_with_trades(
+            mapped_market_folder_path,
+            truncate_and_keep_ratio,
+        )
+    else:
+        loaded_markets, loaded_market_id_to_trades, total_market_folders = load_filtered_markets_with_trades(
+            mapped_market_folder_path,
+            truncate_and_keep_ratio,
+            market_policy=market_policy,
+        )
+    print(
+        f"Loaded {len(loaded_markets)} markets after filtering from {total_market_folders} market folders."
+    )
+
+    loaded_market_id_to_candlestick_data: dict[str, list[CandleStick]] = {}
+    for market in loaded_markets:
+        market_id = str(market["id"])
+        trades = loaded_market_id_to_trades[market_id]
+        interval_trade = get_expected_candlestick_interval(len(trades), desired_num_candlesticks)
+        loaded_market_id_to_candlestick_data[market_id] = get_candlestick_data_from_trades(
+            trades,
+            interval_trade,
+        )
+
+    X, y = build_gru_dataset(
+        loaded_markets,
+        loaded_market_id_to_candlestick_data,
+    )
+
+    fold_results: list[FoldResult] = []
+    y_true_train: list[int]
+    y_prob_train: list[float]
+    y_true_val: list[int]
+    y_prob_val: list[float]
+    average_margin_of_victory: float
+    training_history: GRUTrainingHistory
+    train_metrics: Any
+    val_metrics: Any
+
+    if use_cross_validation:
+        _validate_cv_folds(y, cv_folds)
+        y_labels = y.detach().cpu().squeeze(1).numpy()
+        splitter = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=seed)
+
+        fold_histories: list[GRUTrainingHistory] = []
+        train_metrics_per_fold = []
+        all_train_true: list[int] = []
+        all_train_prob: list[float] = []
+        all_val_true: list[int] = []
+        all_val_prob: list[float] = []
+        all_val_reference_prices: list[float] = []
+
+        for fold_index, (train_idx_np, val_idx_np) in enumerate(
+            splitter.split(X.detach().cpu().numpy(), y_labels),
+            start=1,
+        ):
+            train_indices = torch.tensor(train_idx_np, dtype=torch.long)
+            val_indices = torch.tensor(val_idx_np, dtype=torch.long)
+            X_train, y_train_tensor, X_val, y_val_tensor = _split_by_indices(
+                X,
+                y,
+                train_indices,
+                val_indices,
+            )
+
+            print(
+                f"Prepared GRU CV fold {fold_index}/{cv_folds} for ratio={truncate_and_keep_ratio:.2f}, "
+                f"candles={desired_num_candlesticks}. X_train={tuple(X_train.shape)}, X_val={tuple(X_val.shape)}"
+            )
+
+            gru_model, linear_layer, fold_history = gru_training(
+                X_train,
+                y_train_tensor,
+                X_val,
+                y_val_tensor,
+                seed=seed,
+            )
+            fold_histories.append(fold_history)
+
+            fold_prob_train = _predict_probabilities(gru_model, linear_layer, X_train)
+            fold_prob_val = _predict_probabilities(gru_model, linear_layer, X_val)
+
+            fold_train_metrics = evaluate_binary_metrics(
+                y_train_tensor,
+                fold_prob_train,
+                classification_threshold=CLASSIFICATION_THRESHOLD,
+            )
+            fold_val_metrics = evaluate_binary_metrics(
+                y_val_tensor,
+                fold_prob_val,
+                classification_threshold=CLASSIFICATION_THRESHOLD,
+            )
+            train_metrics_per_fold.append(fold_train_metrics)
+
+            fold_reference_prices = [float(value) for value in X_val[:, -1, 5].detach().cpu().tolist()]
+            fold_margin = calculate_average_margin_of_victory(fold_prob_val, fold_reference_prices)
+
+            fold_results.append(
+                FoldResult(
+                    fold_index=fold_index,
+                    train_size=int(y_train_tensor.shape[0]),
+                    val_size=int(y_val_tensor.shape[0]),
+                    train_metrics=fold_train_metrics,
+                    val_metrics=fold_val_metrics,
+                    average_margin_of_victory=fold_margin,
+                )
+            )
+
+            all_train_true.extend(
+                int(value) for value in y_train_tensor.detach().cpu().squeeze(1).tolist()
+            )
+            all_train_prob.extend(fold_prob_train)
+            all_val_true.extend(int(value) for value in y_val_tensor.detach().cpu().squeeze(1).tolist())
+            all_val_prob.extend(fold_prob_val)
+            all_val_reference_prices.extend(fold_reference_prices)
+
+            print(
+                f"GRU CV fold {fold_index}/{cv_folds} completed. "
+                f"train={y_train_tensor.shape[0]}, val={y_val_tensor.shape[0]}"
+            )
+
+        y_true_train = all_train_true
+        y_prob_train = all_train_prob
+        y_true_val = all_val_true
+        y_prob_val = all_val_prob
+        average_margin_of_victory = calculate_average_margin_of_victory(
+            all_val_prob,
+            all_val_reference_prices,
+        )
+
+        training_history = _average_histories(fold_histories)
+        train_metrics = average_binary_metrics(train_metrics_per_fold)
+        val_metrics = evaluate_binary_metrics(
+            torch.tensor(all_val_true, dtype=torch.long).unsqueeze(1),
+            all_val_prob,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+        file_suffix = f"_cv{cv_folds}"
+        cv_enabled = True
+        run_cv_folds: int | None = cv_folds
+    else:
+        X_train, y_train_tensor, X_val, y_val_tensor = prepare_data_for_gru_training(
+            loaded_markets,
+            loaded_market_id_to_candlestick_data,
+            val_ratio=val_ratio,
+            seed=seed,
+        )
+        print(
+            f"Prepared GRU data for ratio={truncate_and_keep_ratio:.2f}, candles={desired_num_candlesticks}. "
+            f"X_train={tuple(X_train.shape)}, X_val={tuple(X_val.shape)}"
+        )
+
+        gru_model, linear_layer, training_history = gru_training(
+            X_train,
+            y_train_tensor,
+            X_val,
+            y_val_tensor,
+            seed=seed,
+        )
+
+        y_prob_train = _predict_probabilities(gru_model, linear_layer, X_train)
+        y_prob_val = _predict_probabilities(gru_model, linear_layer, X_val)
+        y_true_train = [int(value) for value in y_train_tensor.detach().cpu().squeeze(1).tolist()]
+        y_true_val = [int(value) for value in y_val_tensor.detach().cpu().squeeze(1).tolist()]
+
+        train_metrics = evaluate_binary_metrics(
+            y_train_tensor,
+            y_prob_train,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+        val_metrics = evaluate_binary_metrics(
+            y_val_tensor,
+            y_prob_val,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+
+        reference_prices = [float(value) for value in X_val[:, -1, 5].detach().cpu().tolist()]
+        average_margin_of_victory = calculate_average_margin_of_victory(y_prob_val, reference_prices)
+        fold_results = [
+            FoldResult(
+                fold_index=1,
+                train_size=int(y_train_tensor.shape[0]),
+                val_size=int(y_val_tensor.shape[0]),
+                train_metrics=train_metrics,
+                val_metrics=val_metrics,
+                average_margin_of_victory=average_margin_of_victory,
+            )
+        ]
+        file_suffix = ""
+        cv_enabled = False
+        run_cv_folds = None
+
+    roc_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{file_suffix}.png"
+    )
+    roc_plot_path = save_roc_plot(
+        output_path=roc_output_dir / roc_file_name,
+        title=(
+            f"GRU ROC (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
+        ),
+        roc_fpr=val_metrics.roc_fpr,
+        roc_tpr=val_metrics.roc_tpr,
+        auc=val_metrics.auc,
+        dpi=300,
+    )
+
+    curve_suffix = file_suffix
+    loss_curve_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{curve_suffix}_loss.png"
+    )
+    accuracy_curve_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{curve_suffix}_accuracy.png"
+    )
+    loss_curve_plot_path = save_train_val_metric_plot(
+        output_path=train_val_curves_output_dir / loss_curve_file_name,
+        title=(
+            f"GRU Train/Val Loss (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
+        ),
+        metric_name="Loss",
+        train_values=training_history.train_loss,
+        val_values=training_history.val_loss,
+        dpi=300,
+    )
+    accuracy_curve_plot_path = save_train_val_metric_plot(
+        output_path=train_val_curves_output_dir / accuracy_curve_file_name,
+        title=(
+            f"GRU Train/Val Accuracy (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
+        ),
+        metric_name="Accuracy",
+        train_values=training_history.train_accuracy,
+        val_values=training_history.val_accuracy,
+        y_limit=(0.0, 1.0),
+        dpi=300,
+    )
+
+    y_pred_train = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_train]
+    y_pred_val = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_val]
+
+    train_confusion_matrix_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{file_suffix}_train.png"
+    )
+    val_confusion_matrix_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}{file_suffix}_val.png"
+    )
+    train_confusion_matrix_plot_path = save_confusion_matrix_plot(
+        output_path=confusion_matrix_output_dir / train_confusion_matrix_file_name,
+        title=(
+            f"GRU Train Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
+        ),
+        y_true=y_true_train,
+        y_pred=y_pred_train,
+        dpi=300,
+    )
+    val_confusion_matrix_plot_path = save_confusion_matrix_plot(
+        output_path=confusion_matrix_output_dir / val_confusion_matrix_file_name,
+        title=(
+            f"GRU Val Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks}, mode={'cv' if use_cross_validation else 'single'})"
+        ),
+        y_true=y_true_val,
+        y_pred=y_pred_val,
+        dpi=300,
+    )
+
+    return RunResult(
+        preset=preset,
+        strategy="gru",
+        truncate_and_keep_ratio=truncate_and_keep_ratio,
+        desired_num_candlesticks=desired_num_candlesticks,
+        cv_enabled=cv_enabled,
+        cv_folds=run_cv_folds,
+        train_metrics=train_metrics,
+        val_metrics=val_metrics,
+        average_margin_of_victory=average_margin_of_victory,
+        fold_results=fold_results,
+        roc_plot_path=roc_plot_path,
+        gru_train_curve_plot_path=loss_curve_plot_path,
+        gru_val_curve_plot_path=accuracy_curve_plot_path,
+        train_confusion_matrix_plot_path=train_confusion_matrix_plot_path,
+        val_confusion_matrix_plot_path=val_confusion_matrix_plot_path,
+    )
+
+
+
+================================================
+FILE: analysis_and_experiments/strategies/tabular.py
+================================================
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable
+
+import torch
+from sklearn.model_selection import StratifiedKFold
+from xgboost import XGBClassifier
+
+from analysis_and_experiments.data import load_filtered_markets_with_trades
+from analysis_and_experiments.evaluation import (
+    calculate_average_margin_of_victory,
+    evaluate_binary_metrics,
+)
+from analysis_and_experiments.plotting import save_confusion_matrix_plot, save_roc_plot
+from analysis_and_experiments.strategies.common import (
+    FoldResult,
+    RunResult,
+    average_binary_metrics,
+)
+
+CLASSIFICATION_THRESHOLD = 0.5
+REFERENCE_PRICE_FEATURE = "rolling_vwap_last"
+
+XGB_PARAMS: dict[str, Any] = {
+    "objective": "binary:logistic",
+    "eval_metric": "logloss",
+    "random_state": 42,
+    "n_estimators": 300,
+    "learning_rate": 0.05,
+    "max_depth": 4,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+}
+
+
+def _safe_mean(values: list[float]) -> float:
+    """Return the mean of ``values`` or ``0.0`` when the list is empty."""
+    if not values:
+        return 0.0
+    return float(sum(values) / len(values))
+
+
+def _safe_variance(values: list[float]) -> float:
+    """Return the population variance of ``values`` or ``0.0`` for short inputs."""
+    if len(values) < 2:
+        return 0.0
+    mean = _safe_mean(values)
+    return float(sum((value - mean) ** 2 for value in values) / len(values))
+
+
+def _safe_std(values: list[float]) -> float:
+    """Return the standard deviation derived from ``_safe_variance``."""
+    return float(_safe_variance(values) ** 0.5)
+
+
+def _linear_slope(values: list[float]) -> float:
+    """Estimate the least-squares slope of a numeric sequence."""
+    if len(values) < 2:
+        return 0.0
+
+    x_values = list(range(len(values)))
+    x_mean = _safe_mean(x_values)
+    y_mean = _safe_mean(values)
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_values, values, strict=True))
+    denominator = sum((x - x_mean) ** 2 for x in x_values)
+    if denominator == 0:
+        return 0.0
+    return float(numerator / denominator)
+
+
+def _parse_trade_arrays(
+    trades: list[dict[str, Any]],
+) -> tuple[list[float], list[float], list[float], list[str], list[str]]:
+    """Extract aligned trade feature arrays from raw trade dictionaries."""
+    prices = [float(trade["price"]) for trade in trades]
+    volumes = [float(trade["total_usdc"]) for trade in trades]
+    tokens = [float(trade["tokens"]) for trade in trades]
+    sides = [str(trade["side"]) for trade in trades]
+    wallets = [str(trade["wallet"]) for trade in trades]
+    return prices, volumes, tokens, sides, wallets
+
+
+def _calculate_duration_seconds(trades: list[dict[str, Any]]) -> float:
+    """Return elapsed seconds between the first and last trade timestamps."""
+    if len(trades) < 2:
+        return 0.0
+    first_ts = datetime.fromisoformat(str(trades[0]["timestamp"]))
+    last_ts = datetime.fromisoformat(str(trades[-1]["timestamp"]))
+    duration = (last_ts - first_ts).total_seconds()
+    return float(max(duration, 0.0))
+
+
+def _rolling_volume_weighted_prices(prices: list[float], volumes: list[float], window: int) -> list[float]:
+    """Compute rolling volume-weighted prices over a fixed window."""
+    if window < 1:
+        raise ValueError("window must be >= 1")
+
+    rolling_values: list[float] = []
+    for end_index in range(len(prices)):
+        start_index = max(0, end_index - window + 1)
+        window_prices = prices[start_index : end_index + 1]
+        window_volumes = volumes[start_index : end_index + 1]
+
+        volume_sum = float(sum(window_volumes))
+        if volume_sum > 0:
+            weighted_price = sum(
+                price * volume
+                for price, volume in zip(window_prices, window_volumes, strict=True)
+            ) / volume_sum
+        else:
+            weighted_price = _safe_mean(window_prices)
+        rolling_values.append(float(weighted_price))
+
+    return rolling_values
+
+
+def extract_market_features(
+    market: dict[str, Any],
+    trades: list[dict[str, Any]],
+    *,
+    vwap_window: int = 4,
+    whale_top_k: int = 10,
+) -> dict[str, float]:
+    """Extract tabular features describing one market's trade history."""
+    _ = market
+    if vwap_window < 1:
+        raise ValueError("vwap_window must be >= 1")
+    if whale_top_k < 1:
+        raise ValueError("whale_top_k must be >= 1")
+    if not trades:
+        return {}
+
+    prices, volumes, tokens, sides, wallets = _parse_trade_arrays(trades)
+    rolling_weighted_prices = _rolling_volume_weighted_prices(prices, volumes, vwap_window)
+
+    duration_seconds = _calculate_duration_seconds(trades)
+    trades_per_minute = float(len(trades) / (duration_seconds / 60.0)) if duration_seconds > 0 else 0.0
+
+    wallet_to_net_tokens: dict[str, float] = {}
+    for wallet, side, token_count in zip(wallets, sides, tokens, strict=True):
+        direction = 1.0 if side == "BUY" else -1.0
+        wallet_to_net_tokens[wallet] = wallet_to_net_tokens.get(wallet, 0.0) + direction * token_count
+
+    positive_net_holdings = [value for value in wallet_to_net_tokens.values() if value > 0]
+    positive_net_holdings.sort(reverse=True)
+    total_positive_holdings = float(sum(positive_net_holdings))
+
+    if total_positive_holdings > 0:
+        top1_share = float(positive_net_holdings[0] / total_positive_holdings)
+        topk_share = float(sum(positive_net_holdings[:whale_top_k]) / total_positive_holdings)
+        whale_hhi = float(sum((value / total_positive_holdings) ** 2 for value in positive_net_holdings))
+    else:
+        top1_share = 0.0
+        topk_share = 0.0
+        whale_hhi = 0.0
+
+    features = {
+        "price_latest": float(prices[-1]),
+        "price_min": float(min(prices)),
+        "price_max": float(max(prices)),
+        "price_range": float(max(prices) - min(prices)),
+        "price_mean": _safe_mean(prices),
+        "price_std": _safe_std(prices),
+        "price_var": _safe_variance(prices),
+        "volume_total_usdc": float(sum(volumes)),
+        "volume_latest_usdc": float(volumes[-1]),
+        "volume_mean_usdc": _safe_mean(volumes),
+        "volume_std_usdc": _safe_std(volumes),
+        "volume_var_usdc": _safe_variance(volumes),
+        "volume_max_usdc": float(max(volumes)),
+        "trade_count": float(len(trades)),
+        "duration_seconds": duration_seconds,
+        "trades_per_minute": trades_per_minute,
+        "rolling_vwap_last": float(rolling_weighted_prices[-1]),
+        "rolling_vwap_mean": _safe_mean(rolling_weighted_prices),
+        "rolling_vwap_std": _safe_std(rolling_weighted_prices),
+        "rolling_vwap_min": float(min(rolling_weighted_prices)),
+        "rolling_vwap_max": float(max(rolling_weighted_prices)),
+        "rolling_vwap_slope": _linear_slope(rolling_weighted_prices),
+        "whale_top1_share": top1_share,
+        "whale_topk_share": topk_share,
+        "whale_hhi": whale_hhi,
+    }
+    return features
+
+
+def build_tabular_feature_matrix(
+    loaded_markets: list[dict[str, Any]],
+    market_id_to_trades: dict[str, list[dict[str, Any]]],
+    *,
+    vwap_window: int = 4,
+    whale_top_k: int = 10,
+) -> tuple[torch.Tensor, torch.Tensor, list[str], list[str]]:
+    """Build tabular feature and label tensors for filtered markets."""
+    rows: list[list[float]] = []
+    labels: list[int] = []
+    kept_market_ids: list[str] = []
+    feature_names: list[str] = []
+
+    for market in loaded_markets:
+        market_id = str(market["id"])
+        trades = market_id_to_trades.get(market_id, [])
+        feature_map = extract_market_features(
+            market,
+            trades,
+            vwap_window=vwap_window,
+            whale_top_k=whale_top_k,
+        )
+
+        if not feature_map:
+            continue
+
+        if not feature_names:
+            feature_names = list(feature_map.keys())
+        elif feature_names != list(feature_map.keys()):
+            raise ValueError("Feature key order mismatch across markets.")
+
+        rows.append([float(feature_map[name]) for name in feature_names])
+        labels.append(1 if str(market["outcome"]).lower() == "yes" else 0)
+        kept_market_ids.append(market_id)
+
+    if not rows:
+        raise ValueError("No valid market rows were generated for tabular features.")
+
+    X = torch.tensor(rows, dtype=torch.float32)
+    y = torch.tensor(labels, dtype=torch.long).unsqueeze(1)
+    return X, y, feature_names, kept_market_ids
+
+
+def _split_and_scale_by_indices(
+    X: torch.Tensor,
+    y: torch.Tensor,
+    train_indices: torch.Tensor,
+    val_indices: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+    """Split tabular tensors by index and standardize features from the train split."""
+    X_train_raw = X[train_indices]
+    y_train = y[train_indices]
+    X_val_raw = X[val_indices]
+    y_val = y[val_indices]
+
+    mean = X_train_raw.mean(dim=0)
+    std = X_train_raw.std(dim=0, unbiased=False)
+    safe_std = torch.where(std > 0, std, torch.ones_like(std))
+
+    X_train = (X_train_raw - mean) / safe_std
+    X_val = (X_val_raw - mean) / safe_std
+
+    scaler_stats = {
+        "mean": mean,
+        "std": safe_std,
+        "train_indices": train_indices,
+        "val_indices": val_indices,
+        "X_train_raw": X_train_raw,
+        "X_val_raw": X_val_raw,
+    }
+    return X_train, y_train, X_val, y_val, scaler_stats
+
+
+def split_and_scale_tabular_dataset(
+    X: torch.Tensor,
+    y: torch.Tensor,
+    *,
+    val_ratio: float,
+    seed: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+    """Shuffle, split, and standardize a tabular dataset for one validation split."""
+    if X.ndim != 2:
+        raise ValueError("X must have shape (num_markets, num_features).")
+    if y.ndim != 2 or y.shape[1] != 1:
+        raise ValueError("y must have shape (num_markets, 1).")
+    if X.shape[0] != y.shape[0]:
+        raise ValueError("X and y must have the same first dimension.")
+    if not (0.0 < val_ratio < 1.0):
+        raise ValueError("val_ratio must be in (0, 1).")
+    if X.shape[0] < 2:
+        raise ValueError("Need at least 2 samples to split into train/val.")
+
+    num_samples = X.shape[0]
+    generator = torch.Generator().manual_seed(seed)
+    permutation = torch.randperm(num_samples, generator=generator)
+
+    train_size = int((1.0 - val_ratio) * num_samples)
+    train_size = max(1, min(train_size, num_samples - 1))
+
+    train_indices = permutation[:train_size]
+    val_indices = permutation[train_size:]
+
+    return _split_and_scale_by_indices(X, y, train_indices, val_indices)
+
+
+def prepare_tabular_dataset(
+    mapped_market_folder_path: Path,
+    *,
+    truncate_and_keep_ratio: float,
+    market_policy: Callable[[dict[str, Any]], bool] | None = None,
+    val_ratio: float,
+    vwap_window: int,
+    whale_top_k: int,
+    seed: int,
+) -> tuple[
+    torch.Tensor,
+    torch.Tensor,
+    torch.Tensor,
+    torch.Tensor,
+    list[str],
+    list[str],
+    dict[str, torch.Tensor],
+]:
+    """Load mapped markets and prepare a single-split tabular dataset."""
+    if market_policy is None:
+        loaded_markets, loaded_market_id_to_trades, total_market_folders = load_filtered_markets_with_trades(
+            mapped_market_folder_path,
+            truncate_and_keep_ratio,
+        )
+    else:
+        loaded_markets, loaded_market_id_to_trades, total_market_folders = load_filtered_markets_with_trades(
+            mapped_market_folder_path,
+            truncate_and_keep_ratio,
+            market_policy=market_policy,
+        )
+    print(
+        f"Loaded {len(loaded_markets)} markets after filtering from {total_market_folders} market folders."
+    )
+
+    X, y, feature_names, kept_market_ids = build_tabular_feature_matrix(
+        loaded_markets,
+        loaded_market_id_to_trades,
+        vwap_window=vwap_window,
+        whale_top_k=whale_top_k,
+    )
+
+    X_train, y_train, X_val, y_val, scaler_stats = split_and_scale_tabular_dataset(
+        X,
+        y,
+        val_ratio=val_ratio,
+        seed=seed,
+    )
+    return X_train, y_train, X_val, y_val, feature_names, kept_market_ids, scaler_stats
+
+
+def _validate_cv_folds(y: torch.Tensor, cv_folds: int) -> None:
+    """Validate that each class has enough samples for the requested CV folds."""
+    if cv_folds < 2:
+        raise ValueError(f"cv_folds must be >= 2 when CV is enabled, got {cv_folds}.")
+
+    labels = y.detach().cpu().squeeze(1)
+    class_counts = torch.bincount(labels, minlength=2)
+    min_class_count = int(torch.min(class_counts).item())
+    if min_class_count < cv_folds:
+        raise ValueError(
+            "Invalid cv_folds: smallest class count is "
+            f"{min_class_count}, but cv_folds={cv_folds}. "
+            "Reduce --cv-folds or disable CV."
+        )
+
+
+def _load_tabular_dataset(
+    mapped_market_folder_path: Path,
+    *,
+    truncate_and_keep_ratio: float,
+    market_policy: Callable[[dict[str, Any]], bool] | None,
+    vwap_window: int,
+    whale_top_k: int,
+) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
+    """Load markets and build the full tabular feature matrix without splitting."""
+    if market_policy is None:
+        loaded_markets, loaded_market_id_to_trades, total_market_folders = load_filtered_markets_with_trades(
+            mapped_market_folder_path,
+            truncate_and_keep_ratio,
+        )
+    else:
+        loaded_markets, loaded_market_id_to_trades, total_market_folders = load_filtered_markets_with_trades(
+            mapped_market_folder_path,
+            truncate_and_keep_ratio,
+            market_policy=market_policy,
+        )
+
+    print(
+        f"Loaded {len(loaded_markets)} markets after filtering from {total_market_folders} market folders."
+    )
+
+    X, y, feature_names, _kept_market_ids = build_tabular_feature_matrix(
+        loaded_markets,
+        loaded_market_id_to_trades,
+        vwap_window=vwap_window,
+        whale_top_k=whale_top_k,
+    )
+    return X, y, feature_names
+
+
+def _fit_tabular_model(X_train: torch.Tensor, y_train: torch.Tensor) -> XGBClassifier:
+    """Fit the XGBoost tabular classifier on training tensors."""
+    model = XGBClassifier(**XGB_PARAMS)
+    model.fit(X_train.detach().cpu().numpy(), y_train.detach().cpu().squeeze(1).numpy())
+    return model
+
+
+def _predict_tabular_probabilities(model: XGBClassifier, X: torch.Tensor) -> list[float]:
+    """Predict positive-class probabilities for tabular inputs."""
+    return [float(value) for value in model.predict_proba(X.detach().cpu().numpy())[:, 1].tolist()]
+
+
+def _run_tabular_single_split(
+    *,
+    X: torch.Tensor,
+    y: torch.Tensor,
+    feature_names: list[str],
+    val_ratio: float,
+    seed: int,
+) -> tuple[
+    list[FoldResult],
+    list[int],
+    list[float],
+    list[float],
+    torch.Tensor,
+    float,
+]:
+    """Train and evaluate the tabular model on one shuffled train/validation split."""
+    X_train, y_train, X_val, y_val, scaler_stats = split_and_scale_tabular_dataset(
+        X,
+        y,
+        val_ratio=val_ratio,
+        seed=seed,
+    )
+
+    print(
+        f"Prepared tabular data with legacy split. "
+        f"X_train={tuple(X_train.shape)}, X_val={tuple(X_val.shape)}, features={len(feature_names)}"
+    )
+
+    model = _fit_tabular_model(X_train, y_train)
+    y_prob_train = _predict_tabular_probabilities(model, X_train)
+    y_prob_val = _predict_tabular_probabilities(model, X_val)
+
+    train_metrics = evaluate_binary_metrics(
+        y_train,
+        y_prob_train,
+        classification_threshold=CLASSIFICATION_THRESHOLD,
+    )
+    val_metrics = evaluate_binary_metrics(
+        y_val,
+        y_prob_val,
+        classification_threshold=CLASSIFICATION_THRESHOLD,
+    )
+
+    ref_index = feature_names.index(REFERENCE_PRICE_FEATURE)
+    X_val_raw = scaler_stats["X_val_raw"]
+    reference_prices = [float(value) for value in X_val_raw[:, ref_index].detach().cpu().tolist()]
+    margin = calculate_average_margin_of_victory(y_prob_val, reference_prices)
+
+    fold_result = FoldResult(
+        fold_index=1,
+        train_size=int(y_train.shape[0]),
+        val_size=int(y_val.shape[0]),
+        train_metrics=train_metrics,
+        val_metrics=val_metrics,
+        average_margin_of_victory=margin,
+    )
+
+    return (
+        [fold_result],
+        [int(value) for value in y_train.detach().cpu().squeeze(1).tolist()],
+        y_prob_train,
+        y_prob_val,
+        y_val,
+        margin,
+    )
+
+
+def _run_tabular_cross_validation(
+    *,
+    X: torch.Tensor,
+    y: torch.Tensor,
+    feature_names: list[str],
+    seed: int,
+    cv_folds: int,
+) -> tuple[
+    list[FoldResult],
+    list[int],
+    list[float],
+    list[float],
+    float,
+    torch.Tensor,
+]:
+    """Train and evaluate the tabular model with stratified cross-validation."""
+    _validate_cv_folds(y, cv_folds)
+
+    y_labels = y.detach().cpu().squeeze(1).numpy()
+    splitter = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=seed)
+
+    ref_index = feature_names.index(REFERENCE_PRICE_FEATURE)
+
+    fold_results: list[FoldResult] = []
+    all_train_true: list[int] = []
+    all_train_prob: list[float] = []
+
+    oof_val_true: list[int] = []
+    oof_val_prob: list[float] = []
+    oof_reference_prices: list[float] = []
+
+    for fold_index, (train_idx_np, val_idx_np) in enumerate(
+        splitter.split(X.detach().cpu().numpy(), y_labels),
+        start=1,
+    ):
+        train_indices = torch.tensor(train_idx_np, dtype=torch.long)
+        val_indices = torch.tensor(val_idx_np, dtype=torch.long)
+
+        X_train, y_train, X_val, y_val, scaler_stats = _split_and_scale_by_indices(
+            X,
+            y,
+            train_indices,
+            val_indices,
+        )
+
+        model = _fit_tabular_model(X_train, y_train)
+        y_prob_train = _predict_tabular_probabilities(model, X_train)
+        y_prob_val = _predict_tabular_probabilities(model, X_val)
+
+        train_metrics = evaluate_binary_metrics(
+            y_train,
+            y_prob_train,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+        val_metrics = evaluate_binary_metrics(
+            y_val,
+            y_prob_val,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+
+        X_val_raw = scaler_stats["X_val_raw"]
+        reference_prices = [float(value) for value in X_val_raw[:, ref_index].detach().cpu().tolist()]
+        fold_margin = calculate_average_margin_of_victory(y_prob_val, reference_prices)
+
+        fold_results.append(
+            FoldResult(
+                fold_index=fold_index,
+                train_size=int(y_train.shape[0]),
+                val_size=int(y_val.shape[0]),
+                train_metrics=train_metrics,
+                val_metrics=val_metrics,
+                average_margin_of_victory=fold_margin,
+            )
+        )
+        all_train_true.extend(int(value) for value in y_train.detach().cpu().squeeze(1).tolist())
+        all_train_prob.extend(y_prob_train)
+
+        oof_val_true.extend(int(value) for value in y_val.detach().cpu().squeeze(1).tolist())
+        oof_val_prob.extend(y_prob_val)
+        oof_reference_prices.extend(reference_prices)
+
+        print(
+            f"Tabular CV fold {fold_index}/{cv_folds} completed. "
+            f"train={y_train.shape[0]}, val={y_val.shape[0]}"
+        )
+
+    val_true_tensor = torch.tensor(oof_val_true, dtype=torch.long).unsqueeze(1)
+    aggregate_margin = calculate_average_margin_of_victory(oof_val_prob, oof_reference_prices)
+
+    print(
+        f"Prepared tabular data with CV ({cv_folds} folds). "
+        f"samples={X.shape[0]}, features={len(feature_names)}"
+    )
+
+    return (
+        fold_results,
+        all_train_true,
+        all_train_prob,
+        oof_val_prob,
+        aggregate_margin,
+        val_true_tensor,
+    )
+
+
+def run_tabular_experiment_on_ratio(
+    mapped_market_folder_path: Path,
+    truncate_and_keep_ratio: float,
+    *,
+    preset: str,
+    market_policy: Callable[[dict[str, Any]], bool] | None = None,
+    val_ratio: float = 0.2,
+    vwap_window: int = 4,
+    whale_top_k: int = 10,
+    seed: int = 42,
+    use_cross_validation: bool = True,
+    cv_folds: int = 5,
+    roc_output_dir: Path,
+    confusion_matrix_output_dir: Path | None = None,
+) -> RunResult:
+    """Run the tabular experiment for one truncation ratio and save its artifacts."""
+    if confusion_matrix_output_dir is None:
+        confusion_matrix_output_dir = roc_output_dir.parent.parent / "confusion_matrix" / "tabular"
+
+    X, y, feature_names = _load_tabular_dataset(
+        mapped_market_folder_path,
+        truncate_and_keep_ratio=truncate_and_keep_ratio,
+        market_policy=market_policy,
+        vwap_window=vwap_window,
+        whale_top_k=whale_top_k,
+    )
+
+    if REFERENCE_PRICE_FEATURE not in feature_names:
+        raise ValueError(f"{REFERENCE_PRICE_FEATURE} not found in feature names.")
+
+    if use_cross_validation:
+        (
+            fold_results,
+            y_true_train,
+            y_prob_train,
+            y_prob_val,
+            average_margin_of_victory,
+            y_true_val_tensor,
+        ) = _run_tabular_cross_validation(
+            X=X,
+            y=y,
+            feature_names=feature_names,
+            seed=seed,
+            cv_folds=cv_folds,
+        )
+        train_metrics = average_binary_metrics([fold.train_metrics for fold in fold_results])
+        val_metrics = evaluate_binary_metrics(
+            y_true_val_tensor,
+            y_prob_val,
+            classification_threshold=CLASSIFICATION_THRESHOLD,
+        )
+        file_suffix = f"_cv{cv_folds}"
+        cv_metadata = (True, cv_folds)
+    else:
+        (
+            fold_results,
+            y_true_train,
+            y_prob_train,
+            y_prob_val,
+            y_true_val_tensor,
+            average_margin_of_victory,
+        ) = _run_tabular_single_split(
+            X=X,
+            y=y,
+            feature_names=feature_names,
+            val_ratio=val_ratio,
+            seed=seed,
+        )
+        train_metrics = fold_results[0].train_metrics
+        val_metrics = fold_results[0].val_metrics
+        file_suffix = ""
+        cv_metadata = (False, None)
+
+    roc_file_name = f"{preset}_ratio_{truncate_and_keep_ratio:.2f}{file_suffix}.png"
+    roc_plot_path = save_roc_plot(
+        output_path=roc_output_dir / roc_file_name,
+        title=(
+            f"Tabular ROC (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"mode={'cv' if use_cross_validation else 'single'})"
+        ),
+        roc_fpr=val_metrics.roc_fpr,
+        roc_tpr=val_metrics.roc_tpr,
+        auc=val_metrics.auc,
+        dpi=300,
+    )
+
+    y_pred_train = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_train]
+    y_true_train_list = [int(value) for value in y_true_train]
+
+    y_true_val_list = [int(value) for value in y_true_val_tensor.detach().cpu().squeeze(1).tolist()]
+    y_pred_val = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_val]
+
+    train_confusion_matrix_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}{file_suffix}_train.png"
+    )
+    val_confusion_matrix_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}{file_suffix}_val.png"
+    )
+    train_confusion_matrix_plot_path = save_confusion_matrix_plot(
+        output_path=confusion_matrix_output_dir / train_confusion_matrix_file_name,
+        title=(
+            f"Tabular Train Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"mode={'cv' if use_cross_validation else 'single'})"
+        ),
+        y_true=y_true_train_list,
+        y_pred=y_pred_train,
+        dpi=300,
+    )
+    val_confusion_matrix_plot_path = save_confusion_matrix_plot(
+        output_path=confusion_matrix_output_dir / val_confusion_matrix_file_name,
+        title=(
+            f"Tabular Val Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"mode={'cv' if use_cross_validation else 'single'})"
+        ),
+        y_true=y_true_val_list,
+        y_pred=y_pred_val,
+        dpi=300,
+    )
+
+    cv_enabled, run_cv_folds = cv_metadata
+    return RunResult(
+        preset=preset,
+        strategy="tabular",
+        truncate_and_keep_ratio=truncate_and_keep_ratio,
+        desired_num_candlesticks=None,
+        cv_enabled=cv_enabled,
+        cv_folds=run_cv_folds,
+        train_metrics=train_metrics,
+        val_metrics=val_metrics,
+        average_margin_of_victory=average_margin_of_victory,
+        fold_results=fold_results,
+        roc_plot_path=roc_plot_path,
+        train_confusion_matrix_plot_path=train_confusion_matrix_plot_path,
+        val_confusion_matrix_plot_path=val_confusion_matrix_plot_path,
+    )
+
+
+
+================================================
+FILE: preprocessing/__init__.py
+================================================
+"""Preprocessing pipeline package."""
+
+__all__ = []
+
+
+
+================================================
+FILE: preprocessing/cli.py
+================================================
+import argparse
+from datetime import datetime, timezone
+from pathlib import Path
+
+from preprocessing.config import (
+    DEFAULT_END_DATE_MAX,
+    DEFAULT_END_DATE_MIN,
+    DEFAULT_LIMIT,
+    DEFAULT_MAPPED_MARKETS_FOLDER,
+    DEFAULT_MARKETS_METADATA_PATH,
+    DEFAULT_START_DATE_MIN,
+    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_TRADE_COUNT_THRESHOLD,
+    DEFAULT_TRADES_FOLDER,
+    FetchConfig,
+    MatchConfig,
+    VisualizeConfig,
+)
+from preprocessing.fetch import fetch_all_finished_markets, post_process_markets
+from preprocessing.io import write_json
+from preprocessing.match import run_match
+from preprocessing.visualize import run_visualization
+
+
+def _format_datetime(value: datetime) -> str:
+    """Format a datetime in UTC ISO-8601 ``Z`` notation."""
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_datetime(value: str) -> datetime:
+    """Parse an ISO-8601 datetime string and default naive values to UTC."""
+    normalized = value.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the preprocessing pipeline CLI parser."""
+    parser = argparse.ArgumentParser(description="Preprocessing pipeline CLI.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    fetch_parser = subparsers.add_parser("fetch", help="Fetch finished market metadata.")
+    fetch_parser.add_argument(
+        "--start-date-min",
+        type=_parse_datetime,
+        default=DEFAULT_START_DATE_MIN,
+        help=f"Min market start date (default: {_format_datetime(DEFAULT_START_DATE_MIN)}).",
+    )
+    fetch_parser.add_argument(
+        "--end-date-min",
+        type=_parse_datetime,
+        default=DEFAULT_END_DATE_MIN,
+        help=f"Min market end date (default: {_format_datetime(DEFAULT_END_DATE_MIN)}).",
+    )
+    fetch_parser.add_argument(
+        "--end-date-max",
+        type=_parse_datetime,
+        default=DEFAULT_END_DATE_MAX,
+        help=f"Max market end date (default: {_format_datetime(DEFAULT_END_DATE_MAX)}).",
+    )
+    fetch_parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_LIMIT,
+        help=f"Page size for pagination (default: {DEFAULT_LIMIT}).",
+    )
+    fetch_parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help=f"HTTP timeout seconds (default: {DEFAULT_TIMEOUT_SECONDS}).",
+    )
+    fetch_parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=DEFAULT_MARKETS_METADATA_PATH,
+        help=f"Output path for market metadata JSON (default: {DEFAULT_MARKETS_METADATA_PATH}).",
+    )
+
+    match_parser = subparsers.add_parser("match", help="Map trades into each market folder.")
+    match_parser.add_argument(
+        "--metadata-path",
+        type=Path,
+        default=DEFAULT_MARKETS_METADATA_PATH,
+        help=f"Path to all market metadata JSON (default: {DEFAULT_MARKETS_METADATA_PATH}).",
+    )
+    match_parser.add_argument(
+        "--trades-folder",
+        type=Path,
+        default=DEFAULT_TRADES_FOLDER,
+        help=f"Folder containing trade CSV files (default: {DEFAULT_TRADES_FOLDER}).",
+    )
+    match_parser.add_argument(
+        "--output-folder",
+        type=Path,
+        default=DEFAULT_MAPPED_MARKETS_FOLDER,
+        help=f"Output mapped markets folder (default: {DEFAULT_MAPPED_MARKETS_FOLDER}).",
+    )
+    match_parser.add_argument(
+        "--trade-count-threshold",
+        type=int,
+        default=DEFAULT_TRADE_COUNT_THRESHOLD,
+        help=(
+            "Keep markets whose trade_count is strictly greater than this threshold "
+            f"(default: {DEFAULT_TRADE_COUNT_THRESHOLD})."
+        ),
+    )
+    match_parser.add_argument(
+        "--no-clean-output-folder",
+        action="store_true",
+        help="Do not clear output folder before writing mapped markets.",
+    )
+
+    visualize_parser = subparsers.add_parser(
+        "visualize",
+        help="Generate per-market price history and trade-count distribution plots.",
+    )
+    visualize_parser.add_argument(
+        "--mapped-markets-folder",
+        type=Path,
+        default=DEFAULT_MAPPED_MARKETS_FOLDER,
+        help=f"Mapped markets folder (default: {DEFAULT_MAPPED_MARKETS_FOLDER}).",
+    )
+    visualize_parser.add_argument(
+        "--visualization-output-folder",
+        type=Path,
+        default=DEFAULT_MAPPED_MARKETS_FOLDER,
+        help=(
+            "Folder for visualization outputs "
+            f"(default: {DEFAULT_MAPPED_MARKETS_FOLDER})."
+        ),
+    )
+
+    prepare_parser = subparsers.add_parser(
+        "prepare",
+        help="Run full pipeline: fetch -> match -> visualize.",
+    )
+    prepare_parser.add_argument(
+        "--start-date-min",
+        type=_parse_datetime,
+        default=DEFAULT_START_DATE_MIN,
+        help=f"Min market start date (default: {_format_datetime(DEFAULT_START_DATE_MIN)}).",
+    )
+    prepare_parser.add_argument(
+        "--end-date-min",
+        type=_parse_datetime,
+        default=DEFAULT_END_DATE_MIN,
+        help=f"Min market end date (default: {_format_datetime(DEFAULT_END_DATE_MIN)}).",
+    )
+    prepare_parser.add_argument(
+        "--end-date-max",
+        type=_parse_datetime,
+        default=DEFAULT_END_DATE_MAX,
+        help=f"Max market end date (default: {_format_datetime(DEFAULT_END_DATE_MAX)}).",
+    )
+    prepare_parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_LIMIT,
+        help=f"Page size for pagination (default: {DEFAULT_LIMIT}).",
+    )
+    prepare_parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help=f"HTTP timeout seconds (default: {DEFAULT_TIMEOUT_SECONDS}).",
+    )
+    prepare_parser.add_argument(
+        "--metadata-path",
+        type=Path,
+        default=DEFAULT_MARKETS_METADATA_PATH,
+        help=f"Output path for market metadata JSON (default: {DEFAULT_MARKETS_METADATA_PATH}).",
+    )
+    prepare_parser.add_argument(
+        "--trades-folder",
+        type=Path,
+        default=DEFAULT_TRADES_FOLDER,
+        help=f"Folder containing trade CSV files (default: {DEFAULT_TRADES_FOLDER}).",
+    )
+    prepare_parser.add_argument(
+        "--output-folder",
+        type=Path,
+        default=DEFAULT_MAPPED_MARKETS_FOLDER,
+        help=f"Output mapped markets folder (default: {DEFAULT_MAPPED_MARKETS_FOLDER}).",
+    )
+    prepare_parser.add_argument(
+        "--trade-count-threshold",
+        type=int,
+        default=DEFAULT_TRADE_COUNT_THRESHOLD,
+        help=(
+            "Keep markets whose trade_count is strictly greater than this threshold "
+            f"(default: {DEFAULT_TRADE_COUNT_THRESHOLD})."
+        ),
+    )
+    prepare_parser.add_argument(
+        "--no-clean-output-folder",
+        action="store_true",
+        help="Do not clear output folder before writing mapped markets.",
+    )
+    prepare_parser.add_argument(
+        "--visualization-output-folder",
+        type=Path,
+        default=DEFAULT_MAPPED_MARKETS_FOLDER,
+        help=(
+            "Folder for visualization outputs "
+            f"(default: {DEFAULT_MAPPED_MARKETS_FOLDER})."
+        ),
+    )
+
+    return parser
+
+
+def _run_fetch(config: FetchConfig) -> None:
+    """Fetch, post-process, and persist finished market metadata."""
+    markets = fetch_all_finished_markets(config)
+    markets = post_process_markets(markets)
+    write_json(config.output_path, markets)
+    print(
+        f"Successfully fetched {len(markets)} finished markets and "
+        f"saved to {config.output_path}"
+    )
+
+
+def _run_match(config: MatchConfig) -> None:
+    """Run the trade-to-market matching pipeline."""
+    run_match(config)
+
+
+def _run_visualize(config: VisualizeConfig) -> None:
+    """Run the mapped-market visualization pipeline."""
+    run_visualization(config)
+
+
+def main() -> None:
+    """Run the preprocessing CLI and dispatch the selected subcommand."""
+    args = _build_parser().parse_args()
+
+    if args.command == "fetch":
+        _run_fetch(
+            FetchConfig(
+                start_date_min=args.start_date_min,
+                end_date_min=args.end_date_min,
+                end_date_max=args.end_date_max,
+                limit=args.limit,
+                timeout_seconds=args.timeout_seconds,
+                output_path=args.output_path,
+            )
+        )
+        return
+
+    if args.command == "match":
+        _run_match(
+            MatchConfig(
+                metadata_path=args.metadata_path,
+                trades_folder=args.trades_folder,
+                output_folder=args.output_folder,
+                trade_count_threshold=args.trade_count_threshold,
+                clean_output_folder=not args.no_clean_output_folder,
+            )
+        )
+        return
+
+    if args.command == "visualize":
+        _run_visualize(
+            VisualizeConfig(
+                mapped_markets_folder_path=args.mapped_markets_folder,
+                visualization_output_folder_path=args.visualization_output_folder,
+            )
+        )
+        return
+
+    if args.command == "prepare":
+        fetch_config = FetchConfig(
+            start_date_min=args.start_date_min,
+            end_date_min=args.end_date_min,
+            end_date_max=args.end_date_max,
+            limit=args.limit,
+            timeout_seconds=args.timeout_seconds,
+            output_path=args.metadata_path,
+        )
+        match_config = MatchConfig(
+            metadata_path=args.metadata_path,
+            trades_folder=args.trades_folder,
+            output_folder=args.output_folder,
+            trade_count_threshold=args.trade_count_threshold,
+            clean_output_folder=not args.no_clean_output_folder,
+        )
+        visualize_config = VisualizeConfig(
+            mapped_markets_folder_path=args.output_folder,
+            visualization_output_folder_path=args.visualization_output_folder,
+        )
+
+        print("[prepare] Step 1/3: fetch")
+        _run_fetch(fetch_config)
+        print("[prepare] Step 2/3: match")
+        _run_match(match_config)
+        print("[prepare] Step 3/3: visualize")
+        _run_visualize(visualize_config)
+        return
+
+    raise ValueError(f"Unsupported command: {args.command}")
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+================================================
+FILE: preprocessing/config.py
+================================================
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+
+DEFAULT_START_DATE_MIN = datetime.fromisoformat("2025-12-25T00:00:00+00:00")
+DEFAULT_END_DATE_MIN = datetime.fromisoformat("2025-12-25T00:00:00+00:00")
+DEFAULT_END_DATE_MAX = datetime.fromisoformat("2025-12-31T23:59:59+00:00")
+
+DEFAULT_MARKETS_METADATA_PATH = Path("datasets/metadata/all_markets_metadata.json")
+DEFAULT_TRADES_FOLDER = Path("datasets/trades")
+DEFAULT_MAPPED_MARKETS_FOLDER = Path("datasets/mapped_markets")
+
+DEFAULT_LIMIT = 500
+DEFAULT_TIMEOUT_SECONDS = 30
+DEFAULT_TRADE_COUNT_THRESHOLD = 1
+
+TRADE_HEADERS = [
+    "block_number",
+    "timestamp",
+    "tx_hash",
+    "wallet",
+    "side",
+    "tokens",
+    "price",
+    "total_usdc",
+]
+
+
+@dataclass(frozen=True)
+class FetchConfig:
+    start_date_min: datetime = DEFAULT_START_DATE_MIN
+    end_date_min: datetime = DEFAULT_END_DATE_MIN
+    end_date_max: datetime = DEFAULT_END_DATE_MAX
+    limit: int = DEFAULT_LIMIT
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    output_path: Path = DEFAULT_MARKETS_METADATA_PATH
+
+
+@dataclass(frozen=True)
+class MatchConfig:
+    metadata_path: Path = DEFAULT_MARKETS_METADATA_PATH
+    trades_folder: Path = DEFAULT_TRADES_FOLDER
+    output_folder: Path = DEFAULT_MAPPED_MARKETS_FOLDER
+    trade_count_threshold: int = DEFAULT_TRADE_COUNT_THRESHOLD
+    clean_output_folder: bool = True
+
+
+@dataclass(frozen=True)
+class VisualizeConfig:
+    mapped_markets_folder_path: Path = DEFAULT_MAPPED_MARKETS_FOLDER
+    visualization_output_folder_path: Path = DEFAULT_MAPPED_MARKETS_FOLDER
+
+
+
+================================================
+FILE: preprocessing/fetch.py
+================================================
+import json
+from datetime import datetime, timezone
+from typing import Any
+
+import requests
+
+from preprocessing.config import FetchConfig
+
+GAMMA_BASE_URL = "https://gamma-api.polymarket.com"
+
+
+def _to_iso_z(value: datetime) -> str:
+    """Format a datetime in UTC ISO-8601 ``Z`` notation."""
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    """Parse an ISO-8601 datetime string that may end with ``Z``."""
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def fetch_all_finished_markets(config: FetchConfig) -> list[dict[str, Any]]:
+    """Fetch all finished markets that satisfy the configured date filters."""
+    if config.limit <= 0:
+        raise ValueError("limit must be > 0")
+
+    end_date_min_iso = _to_iso_z(config.end_date_min)
+    end_date_max_iso = _to_iso_z(config.end_date_max)
+
+    markets: list[dict[str, Any]] = []
+    offset = 0
+
+    session = requests.Session()
+
+    while True:
+        response = session.get(
+            f"{GAMMA_BASE_URL}/markets",
+            params={
+                "closed": "true",
+                "limit": config.limit,
+                "offset": offset,
+                "end_date_min": end_date_min_iso,
+                "end_date_max": end_date_max_iso,
+            },
+            timeout=config.timeout_seconds,
+        )
+        response.raise_for_status()
+
+        page = response.json()
+        if not isinstance(page, list):
+            raise TypeError("Unexpected response: expected a list of markets")
+        if not page:
+            break
+
+        filtered_page = [
+            market
+            for market in page
+            if _parse_iso_datetime(str(market["startDate"])) > config.start_date_min
+        ]
+        markets.extend(filtered_page)
+
+        print(
+            f"fetched: {len(page)} markets and keep: {len(filtered_page)} "
+            f"from offset={offset}, total keep: {len(markets)}"
+        )
+        offset += len(page)
+
+    return markets
+
+
+def post_process_markets(markets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Infer binary outcomes from market payloads and drop invalid entries."""
+    post_processed_markets: list[dict[str, Any]] = []
+
+    for market in markets:
+        outcome_prices = json.loads(str(market["outcomePrices"]))
+        if not isinstance(outcome_prices, list) or len(outcome_prices) < 2:
+            print(
+                f"Unexpected outcomePrices format for market id: {market['id']}. "
+                "Skipping this market."
+            )
+            continue
+
+        first = str(outcome_prices[0])
+        second = str(outcome_prices[1])
+
+        if first == "0" and second == "1":
+            market["outcome"] = "no"
+        elif first == "1" and second == "0":
+            market["outcome"] = "yes"
+        else:
+            print(
+                f"Unexpected outcomePrices: {outcome_prices} "
+                f"for market id: {market['id']}. Skipping this market."
+            )
+            continue
+
+        post_processed_markets.append(market)
+
+    print(f"Post processed markets: {len(post_processed_markets)} / {len(markets)}")
+    return post_processed_markets
+
+
+
+================================================
+FILE: preprocessing/io.py
+================================================
+import csv
+import json
+import shutil
+from pathlib import Path
+from typing import Any
+
+from preprocessing.config import TRADE_HEADERS
+
+
+def ensure_parent_dir(path: Path) -> None:
+    """Create the parent directory for a file path if it does not exist."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def read_json(path: Path) -> Any:
+    """Read and return JSON data from ``path``."""
+    if not path.exists():
+        raise FileNotFoundError(f"File does not exist: {path}")
+    with open(path, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def write_json(path: Path, data: Any) -> None:
+    """Write JSON data to ``path`` after creating its parent directory."""
+    ensure_parent_dir(path)
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
+
+
+def iter_trade_csv_files(trades_folder: Path) -> list[Path]:
+    """Return the sorted trade CSV files in the trades folder."""
+    if not trades_folder.exists():
+        raise FileNotFoundError(f"Trades folder does not exist: {trades_folder}")
+    return sorted(trades_folder.glob("*.csv"), key=lambda item: item.name)
+
+
+def clear_directory(path: Path) -> None:
+    """Delete all files and subdirectories inside ``path`` if it exists."""
+    if not path.exists():
+        return
+    for item in sorted(path.iterdir(), key=lambda entry: entry.name):
+        if item.is_dir():
+            shutil.rmtree(item)
+        else:
+            item.unlink()
+
+
+def save_mapped_markets(markets: list[dict[str, Any]], output_folder: Path) -> None:
+    """Write mapped market metadata and YES/NO trade CSV files to disk."""
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    for market in markets:
+        market_id = str(market["id"])
+        market_folder = output_folder / market_id
+        market_folder.mkdir(parents=True, exist_ok=True)
+
+        yes_trades_path = market_folder / "yes.csv"
+        no_trades_path = market_folder / "no.csv"
+
+        with open(yes_trades_path, "w", encoding="utf-8", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=TRADE_HEADERS)
+            writer.writeheader()
+            writer.writerows(market["yes_trades"])
+
+        with open(no_trades_path, "w", encoding="utf-8", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=TRADE_HEADERS)
+            writer.writeheader()
+            writer.writerows(market["no_trades"])
+
+        metadata_exclude_trades = {
+            key: value
+            for key, value in market.items()
+            if key not in ["yes_trades", "no_trades"]
+        }
+        write_json(market_folder / "metadata.json", metadata_exclude_trades)
+
+
+
+================================================
+FILE: preprocessing/match.py
+================================================
+import csv
+import json
+from pathlib import Path
+from typing import Any
+
+from preprocessing.config import MatchConfig
+from preprocessing.io import clear_directory, iter_trade_csv_files, read_json, save_mapped_markets
+
+TokenToMarketSide = dict[str, tuple[dict[str, Any], str]]
+
+
+def load_markets_metadata(metadata_path: Path) -> tuple[TokenToMarketSide, list[dict[str, Any]]]:
+    """Load market metadata and build a token-to-market-side lookup table."""
+    raw = read_json(metadata_path)
+    if not isinstance(raw, list):
+        raise TypeError(f"Expected list in metadata JSON: {metadata_path}")
+
+    markets: list[dict[str, Any]] = raw
+    print(f"Loaded {len(markets)} markets from {metadata_path}")
+
+    token_to_market_side: TokenToMarketSide = {}
+    for market in markets:
+        market["trade_count"] = 0
+        market["yes_trade_count"] = 0
+        market["no_trade_count"] = 0
+        market["yes_trades"] = []
+        market["no_trades"] = []
+
+        clob_token_ids = json.loads(str(market["clobTokenIds"]))
+        if not isinstance(clob_token_ids, list) or len(clob_token_ids) < 2:
+            raise ValueError(f"Invalid clobTokenIds for market id {market.get('id')}")
+
+        yes_token_id = str(clob_token_ids[0])
+        no_token_id = str(clob_token_ids[1])
+        token_to_market_side[yes_token_id] = (market, "yes")
+        token_to_market_side[no_token_id] = (market, "no")
+
+    return token_to_market_side, markets
+
+
+def map_markets_and_trades(
+    token_to_market_side: TokenToMarketSide,
+    markets: list[dict[str, Any]],
+    trades_folder: Path,
+    trade_count_threshold: int,
+) -> list[dict[str, Any]]:
+    """Attach trades to markets and keep only markets above the trade threshold."""
+    for trade_file_path in iter_trade_csv_files(trades_folder):
+        with open(trade_file_path, mode="r", encoding="utf-8") as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                token_id = str(row.get("token_id", ""))
+                hit = token_to_market_side.get(token_id)
+                if hit is None:
+                    continue
+
+                market, side_key = hit
+                trade_info = {
+                    "block_number": row.get("block_number", ""),
+                    "timestamp": row.get("timestamp", ""),
+                    "tx_hash": row.get("tx_hash", ""),
+                    "wallet": row.get("wallet", ""),
+                    "side": row.get("side", ""),
+                    "tokens": row.get("tokens", ""),
+                    "price": row.get("price", ""),
+                    "total_usdc": row.get("total_usdc", ""),
+                }
+
+                if side_key == "yes":
+                    market["yes_trades"].append(trade_info)
+                    market["yes_trade_count"] += 1
+                else:
+                    market["no_trades"].append(trade_info)
+                    market["no_trade_count"] += 1
+
+                market["trade_count"] += 1
+
+    filtered_mapped_markets = [
+        market for market in markets if int(market["trade_count"]) > trade_count_threshold
+    ]
+    print(
+        f"Found {len(filtered_mapped_markets)} / {len(markets)} markets "
+        f"with at least {trade_count_threshold} trade."
+    )
+
+    for market in filtered_mapped_markets:
+        market["yes_trades"].sort(key=lambda trade: str(trade["timestamp"]))
+        market["no_trades"].sort(key=lambda trade: str(trade["timestamp"]))
+
+    return filtered_mapped_markets
+
+
+def run_match(config: MatchConfig) -> list[dict[str, Any]]:
+    """Run market/trade matching and persist mapped market folders."""
+    if config.clean_output_folder:
+        clear_directory(config.output_folder)
+
+    token_to_market_side, markets = load_markets_metadata(config.metadata_path)
+    filtered_mapped_markets = map_markets_and_trades(
+        token_to_market_side,
+        markets,
+        config.trades_folder,
+        config.trade_count_threshold,
+    )
+    save_mapped_markets(filtered_mapped_markets, output_folder=config.output_folder)
+    print(
+        f"Successfully saved trades for {len(filtered_mapped_markets)} markets "
+        f"to {config.output_folder}"
+    )
+    return filtered_mapped_markets
+
+
+
+================================================
+FILE: preprocessing/visualize.py
+================================================
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+
+from analysis_and_experiments.data import load_market_and_trades, market_filter_policy
+from preprocessing.config import VisualizeConfig
+
+
+def _visualize_yes_price_history_for_market(
+    market: dict[str, object],
+    trades: list[dict[str, object]],
+    output_dir: Path,
+) -> None:
+    """Save a YES-price history plot for a single market."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    prices = [float(trade["price"]) for trade in trades]
+    trade_index = list(range(len(prices)))
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(trade_index, prices, label="Yes Trades", marker="o")
+    plt.xlabel("Timestamp")
+    plt.ylabel("Price")
+    plt.title(f"Price History for Market: {market['id']}")
+    plt.legend()
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(output_dir / "yes_price_history_final.png")
+    plt.close()
+
+
+def _visualize_yes_trades_histogram(trade_count_statistics: list[int], output_dir: Path) -> None:
+    """Save a histogram of filtered YES-trade counts across markets."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(10, 6))
+    plt.hist(trade_count_statistics, bins=20, edgecolor="black")
+    plt.xlabel("Number of Yes Trades (after filtering)")
+    plt.ylabel("Number of Markets")
+    plt.title("Distribution of Yes Trade Counts Across Markets")
+    plt.tight_layout()
+    plt.savefig(output_dir / "yes_trade_count_distribution.png", dpi=300)
+    plt.close()
+
+
+def run_visualization(config: VisualizeConfig) -> None:
+    """Generate per-market price plots and an aggregate trade-count histogram."""
+    loaded_markets: list[dict[str, object]] = []
+    loaded_market_id_to_trades: dict[str, list[dict[str, object]]] = {}
+    loaded_market_id_to_folder: dict[str, Path] = {}
+
+    for market_folder in sorted(config.mapped_markets_folder_path.iterdir(), key=lambda item: item.name):
+        if not market_folder.is_dir():
+            continue
+
+        market, trades = load_market_and_trades(market_folder, truncate_and_keep_ratio=1.0)
+        if not market_filter_policy(market):
+            continue
+
+        market_id = str(market["id"])
+        loaded_markets.append(market)
+        loaded_market_id_to_trades[market_id] = trades
+        loaded_market_id_to_folder[market_id] = config.visualization_output_folder_path / market_id
+
+    trade_count_statistics: list[int] = []
+    for market in loaded_markets:
+        market_id = str(market["id"])
+        trades = loaded_market_id_to_trades[market_id]
+        market_folder = loaded_market_id_to_folder[market_id]
+        _visualize_yes_price_history_for_market(market, trades, market_folder)
+        trade_count_statistics.append(len(trades))
+
+    _visualize_yes_trades_histogram(
+        trade_count_statistics,
+        config.visualization_output_folder_path,
+    )
