@@ -10,7 +10,7 @@ from analysis_and_experiments.evaluation import (
     calculate_average_margin_of_victory,
     evaluate_binary_metrics,
 )
-from analysis_and_experiments.plotting import save_roc_plot
+from analysis_and_experiments.plotting import save_confusion_matrix_plot, save_roc_plot
 from analysis_and_experiments.strategies.common import RunResult
 
 CLASSIFICATION_THRESHOLD = 0.5
@@ -324,7 +324,11 @@ def run_tabular_experiment_on_ratio(
     whale_top_k: int = 10,
     seed: int = 42,
     roc_output_dir: Path,
+    confusion_matrix_output_dir: Path | None = None,
 ) -> RunResult:
+    if confusion_matrix_output_dir is None:
+        confusion_matrix_output_dir = roc_output_dir.parent.parent / "confusion_matrix" / "tabular"
+
     X_train, y_train, X_val, y_val, feature_names, _kept_market_ids, scaler_stats = prepare_tabular_dataset(
         mapped_market_folder_path,
         truncate_and_keep_ratio=truncate_and_keep_ratio,
@@ -375,6 +379,28 @@ def run_tabular_experiment_on_ratio(
         dpi=300,
     )
 
+    y_true_train = [int(value) for value in y_train.detach().cpu().squeeze(1).tolist()]
+    y_true_val = [int(value) for value in y_val.detach().cpu().squeeze(1).tolist()]
+    y_pred_train = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_train]
+    y_pred_val = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_val]
+
+    train_confusion_matrix_file_name = f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_train.png"
+    val_confusion_matrix_file_name = f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_val.png"
+    train_confusion_matrix_plot_path = save_confusion_matrix_plot(
+        output_path=confusion_matrix_output_dir / train_confusion_matrix_file_name,
+        title=f"Tabular Train Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f})",
+        y_true=y_true_train,
+        y_pred=y_pred_train,
+        dpi=300,
+    )
+    val_confusion_matrix_plot_path = save_confusion_matrix_plot(
+        output_path=confusion_matrix_output_dir / val_confusion_matrix_file_name,
+        title=f"Tabular Val Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f})",
+        y_true=y_true_val,
+        y_pred=y_pred_val,
+        dpi=300,
+    )
+
     return RunResult(
         preset=preset,
         strategy="tabular",
@@ -384,4 +410,6 @@ def run_tabular_experiment_on_ratio(
         val_metrics=val_metrics,
         average_margin_of_victory=average_margin_of_victory,
         roc_plot_path=roc_plot_path,
+        train_confusion_matrix_plot_path=train_confusion_matrix_plot_path,
+        val_confusion_matrix_plot_path=val_confusion_matrix_plot_path,
     )

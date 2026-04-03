@@ -109,6 +109,14 @@ def _print_run_result(run: RunResult) -> None:
         print(f"ROC plot saved: {run.roc_plot_path}")
     else:
         print("ROC plot skipped: validation labels contain a single class.")
+    if run.gru_train_curve_plot_path is not None:
+        print(f"GRU train/val loss plot saved: {run.gru_train_curve_plot_path}")
+    if run.gru_val_curve_plot_path is not None:
+        print(f"GRU train/val accuracy plot saved: {run.gru_val_curve_plot_path}")
+    if run.train_confusion_matrix_plot_path is not None:
+        print(f"Train confusion matrix saved: {run.train_confusion_matrix_plot_path}")
+    if run.val_confusion_matrix_plot_path is not None:
+        print(f"Val confusion matrix saved: {run.val_confusion_matrix_plot_path}")
 
 
 def run_preset(
@@ -143,6 +151,8 @@ def run_preset(
                 desired_num_candlesticks=task.desired_num_candlesticks or 40,
                 market_policy=market_policy,
                 roc_output_dir=output_root / "plots" / "roc" / "gru",
+                train_val_curves_output_dir=output_root / "plots" / "training_curves" / "gru",
+                confusion_matrix_output_dir=output_root / "plots" / "confusion_matrix" / "gru",
             )
         elif task.strategy == "tabular":
             result = run_tabular_experiment_on_ratio(
@@ -151,6 +161,7 @@ def run_preset(
                 preset=task.preset,
                 market_policy=market_policy,
                 roc_output_dir=output_root / "plots" / "roc" / "tabular",
+                confusion_matrix_output_dir=output_root / "plots" / "confusion_matrix" / "tabular",
             )
         else:
             raise ValueError(f"Unsupported strategy: {task.strategy}")

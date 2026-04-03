@@ -11,7 +11,11 @@ from analysis_and_experiments.evaluation import (
     calculate_average_margin_of_victory,
     evaluate_binary_metrics,
 )
-from analysis_and_experiments.plotting import save_roc_plot
+from analysis_and_experiments.plotting import (
+    save_confusion_matrix_plot,
+    save_train_val_metric_plot,
+    save_roc_plot,
+)
 from analysis_and_experiments.strategies.common import RunResult
 
 CLASSIFICATION_THRESHOLD = 0.5
@@ -25,6 +29,14 @@ class CandleStick:
     high_price: float
     total_volume: float
     weighted_average_price: float
+
+
+@dataclass
+class GRUTrainingHistory:
+    train_loss: list[float]
+    train_accuracy: list[float]
+    val_loss: list[float]
+    val_accuracy: list[float]
 
 
 def get_candlestick_data_from_trades(
@@ -131,7 +143,7 @@ def gru_training(
     y_val: torch.Tensor,
     *,
     seed: int,
-) -> tuple[nn.GRU, nn.Linear]:
+) -> tuple[nn.GRU, nn.Linear, GRUTrainingHistory]:
     torch.manual_seed(seed)
 
     feature_size = X_train.shape[2]
@@ -154,6 +166,10 @@ def gru_training(
     best_gru_model_state = deepcopy(gru_model.state_dict())
     best_linear_layer_state = deepcopy(linear_layer.state_dict())
     best_val_accuracy = 0.0
+    train_loss_history: list[float] = []
+    train_accuracy_history: list[float] = []
+    val_loss_history: list[float] = []
+    val_accuracy_history: list[float] = []
 
     for epoch in range(num_epochs):
         gru_model.train()
@@ -168,16 +184,24 @@ def gru_training(
         predicted = (torch.sigmoid(logits) > CLASSIFICATION_THRESHOLD).long()
         train_correct = (predicted == y_train).sum().item()
         train_total = y_train.size(0)
+        train_loss = float(loss.item())
+        train_accuracy = float(train_correct / train_total)
 
         gru_model.eval()
         with torch.no_grad():
             val_output, _ = gru_model(X_val)
             val_last_hidden_state = val_output[:, -1, :]
             val_logits = linear_layer(val_last_hidden_state)
+            val_loss = float(criterion(val_logits, y_val.float()).item())
             val_predicted = (torch.sigmoid(val_logits) > CLASSIFICATION_THRESHOLD).long()
             val_correct = (val_predicted == y_val).sum().item()
             val_total = y_val.size(0)
             val_accuracy = val_correct / val_total
+
+        train_loss_history.append(train_loss)
+        train_accuracy_history.append(train_accuracy)
+        val_loss_history.append(val_loss)
+        val_accuracy_history.append(float(val_accuracy))
 
         if val_accuracy > best_val_accuracy:
             best_val_accuracy = val_accuracy
@@ -186,14 +210,24 @@ def gru_training(
 
         if (epoch + 1) % 10 == 0:
             print(
-                f"Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}, "
-                f"Train Acc: {train_correct / train_total:.4f}, Val Acc: {val_correct / val_total:.4f}"
+                f"Epoch [{epoch + 1}/{num_epochs}], "
+                f"Train Loss: {train_loss:.4f}, Train Acc: {train_accuracy:.4f}, "
+                f"Val Loss: {val_loss:.4f}, Val Acc: {val_correct / val_total:.4f}"
             )
 
     print(f"Loading best model state with Val Accuracy: {best_val_accuracy:.4f}")
     gru_model.load_state_dict(best_gru_model_state)
     linear_layer.load_state_dict(best_linear_layer_state)
-    return gru_model, linear_layer
+    return (
+        gru_model,
+        linear_layer,
+        GRUTrainingHistory(
+            train_loss=train_loss_history,
+            train_accuracy=train_accuracy_history,
+            val_loss=val_loss_history,
+            val_accuracy=val_accuracy_history,
+        ),
+    )
 
 
 def _predict_probabilities(gru_model: nn.Module, linear_layer: nn.Module, X: torch.Tensor) -> list[float]:
@@ -216,7 +250,14 @@ def run_gru_experiment_on_ratio(
     val_ratio: float = 0.2,
     seed: int = 42,
     roc_output_dir: Path,
+    train_val_curves_output_dir: Path | None = None,
+    confusion_matrix_output_dir: Path | None = None,
 ) -> RunResult:
+    if train_val_curves_output_dir is None:
+        train_val_curves_output_dir = roc_output_dir.parent.parent / "training_curves" / "gru"
+    if confusion_matrix_output_dir is None:
+        confusion_matrix_output_dir = roc_output_dir.parent.parent / "confusion_matrix" / "gru"
+
     if market_policy is None:
         loaded_markets, loaded_market_id_to_trades, total_market_folders = load_filtered_markets_with_trades(
             mapped_market_folder_path,
@@ -254,7 +295,7 @@ def run_gru_experiment_on_ratio(
         f"X_train={tuple(X_train.shape)}, X_val={tuple(X_val.shape)}"
     )
 
-    gru_model, linear_layer = gru_training(
+    gru_model, linear_layer, training_history = gru_training(
         X_train,
         y_train,
         X_val,
@@ -294,6 +335,68 @@ def run_gru_experiment_on_ratio(
         dpi=300,
     )
 
+    loss_curve_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}_loss.png"
+    )
+    accuracy_curve_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}_accuracy.png"
+    )
+    loss_curve_plot_path = save_train_val_metric_plot(
+        output_path=train_val_curves_output_dir / loss_curve_file_name,
+        title=(
+            f"GRU Train/Val Loss (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks})"
+        ),
+        metric_name="Loss",
+        train_values=training_history.train_loss,
+        val_values=training_history.val_loss,
+        dpi=300,
+    )
+    accuracy_curve_plot_path = save_train_val_metric_plot(
+        output_path=train_val_curves_output_dir / accuracy_curve_file_name,
+        title=(
+            f"GRU Train/Val Accuracy (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks})"
+        ),
+        metric_name="Accuracy",
+        train_values=training_history.train_accuracy,
+        val_values=training_history.val_accuracy,
+        y_limit=(0.0, 1.0),
+        dpi=300,
+    )
+
+    y_true_train = [int(value) for value in y_train.detach().cpu().squeeze(1).tolist()]
+    y_true_val = [int(value) for value in y_val.detach().cpu().squeeze(1).tolist()]
+    y_pred_train = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_train]
+    y_pred_val = [1 if probability >= CLASSIFICATION_THRESHOLD else 0 for probability in y_prob_val]
+
+    train_confusion_matrix_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}_train.png"
+    )
+    val_confusion_matrix_file_name = (
+        f"{preset}_ratio_{truncate_and_keep_ratio:.2f}_candles_{desired_num_candlesticks}_val.png"
+    )
+    train_confusion_matrix_plot_path = save_confusion_matrix_plot(
+        output_path=confusion_matrix_output_dir / train_confusion_matrix_file_name,
+        title=(
+            f"GRU Train Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks})"
+        ),
+        y_true=y_true_train,
+        y_pred=y_pred_train,
+        dpi=300,
+    )
+    val_confusion_matrix_plot_path = save_confusion_matrix_plot(
+        output_path=confusion_matrix_output_dir / val_confusion_matrix_file_name,
+        title=(
+            f"GRU Val Confusion Matrix (preset={preset}, ratio={truncate_and_keep_ratio:.2f}, "
+            f"candles={desired_num_candlesticks})"
+        ),
+        y_true=y_true_val,
+        y_pred=y_pred_val,
+        dpi=300,
+    )
+
     return RunResult(
         preset=preset,
         strategy="gru",
@@ -303,4 +406,8 @@ def run_gru_experiment_on_ratio(
         val_metrics=val_metrics,
         average_margin_of_victory=average_margin_of_victory,
         roc_plot_path=roc_plot_path,
+        gru_train_curve_plot_path=loss_curve_plot_path,
+        gru_val_curve_plot_path=accuracy_curve_plot_path,
+        train_confusion_matrix_plot_path=train_confusion_matrix_plot_path,
+        val_confusion_matrix_plot_path=val_confusion_matrix_plot_path,
     )

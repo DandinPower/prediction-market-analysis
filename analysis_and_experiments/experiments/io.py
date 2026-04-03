@@ -28,6 +28,20 @@ def _run_to_flat_row(run: RunResult) -> dict[str, Any]:
         "val_auc": run.val_metrics.auc,
         "average_margin_of_victory": run.average_margin_of_victory,
         "roc_plot_path": str(run.roc_plot_path) if run.roc_plot_path is not None else None,
+        "gru_train_curve_plot_path": (
+            str(run.gru_train_curve_plot_path) if run.gru_train_curve_plot_path is not None else None
+        ),
+        "gru_val_curve_plot_path": (
+            str(run.gru_val_curve_plot_path) if run.gru_val_curve_plot_path is not None else None
+        ),
+        "train_confusion_matrix_plot_path": (
+            str(run.train_confusion_matrix_plot_path)
+            if run.train_confusion_matrix_plot_path is not None
+            else None
+        ),
+        "val_confusion_matrix_plot_path": (
+            str(run.val_confusion_matrix_plot_path) if run.val_confusion_matrix_plot_path is not None else None
+        ),
     }
 
 
