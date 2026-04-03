@@ -1,6 +1,14 @@
-mapped_markets/
-markets/
+# Ignore Python bytecode and cache files.
+__pycache__/
+*.pyc
 
-trades
+# Ignore datasets, which will exceed GitHub's file size limit.
+datasets/**/*.csv
+datasets/**/*.json
 
-.env
+# Ignore data processing outputs and experimental results.
+outputs/
+datasets/mapped_markets/
+
+# Ignore environment variables and secrets for poly-trade-scan tool.
+poly-trade-scan/.env
